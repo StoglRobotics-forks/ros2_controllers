@@ -66,7 +66,7 @@ protected:
   std::unique_ptr<semantic_components::IMUSensor> imu_sensor_;
 
   using StatePublisher = realtime_tools::RealtimePublisher<sensor_msgs::msg::Imu>;
-  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr sensor_state_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::Imu>::SharedPtr sensor_state_publisher_;
   std::unique_ptr<StatePublisher> realtime_publisher_;
 };
 

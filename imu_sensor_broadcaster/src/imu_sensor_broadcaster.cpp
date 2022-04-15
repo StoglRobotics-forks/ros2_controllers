@@ -101,6 +101,9 @@ controller_interface::InterfaceConfiguration IMUSensorBroadcaster::state_interfa
 
 CallbackReturn IMUSensorBroadcaster::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // destogl: fixup for galactic backport - activate publishers
+  sensor_state_publisher_->on_activate();
+
   imu_sensor_->assign_loaned_state_interfaces(state_interfaces_);
   return CallbackReturn::SUCCESS;
 }
@@ -108,6 +111,9 @@ CallbackReturn IMUSensorBroadcaster::on_activate(const rclcpp_lifecycle::State &
 CallbackReturn IMUSensorBroadcaster::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // destogl: fixup for galactic backport - deactivate publishers
+  sensor_state_publisher_->on_deactivate();
+
   imu_sensor_->release_interfaces();
   return CallbackReturn::SUCCESS;
 }

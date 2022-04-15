@@ -508,6 +508,11 @@ CallbackReturn DiffDriveController::on_configure(const rclcpp_lifecycle::State &
 
 CallbackReturn DiffDriveController::on_activate(const rclcpp_lifecycle::State &)
 {
+  // destogl: fixup for galactic backport - activate publishers
+  odometry_publisher_->on_activate();
+  odometry_transform_publisher_->on_activate();
+  limited_velocity_publisher_->on_activate();
+
   const auto left_result =
     configure_side("left", left_wheel_names_, registered_left_wheel_handles_);
   const auto right_result =
@@ -534,6 +539,11 @@ CallbackReturn DiffDriveController::on_activate(const rclcpp_lifecycle::State &)
 
 CallbackReturn DiffDriveController::on_deactivate(const rclcpp_lifecycle::State &)
 {
+  // destogl: fixup for galactic backport - deactivate publishers
+  odometry_publisher_->on_deactivate();
+  odometry_transform_publisher_->on_deactivate();
+  limited_velocity_publisher_->on_deactivate();
+
   subscriber_is_active_ = false;
   return CallbackReturn::SUCCESS;
 }

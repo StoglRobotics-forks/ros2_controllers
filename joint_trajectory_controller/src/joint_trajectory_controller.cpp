@@ -748,6 +748,9 @@ CallbackReturn JointTrajectoryController::on_configure(const rclcpp_lifecycle::S
 
 CallbackReturn JointTrajectoryController::on_activate(const rclcpp_lifecycle::State &)
 {
+  // destogl: fixup for galactic backport - activate publishers
+  publisher_->on_activate();
+
   // order all joints in the storage
   for (const auto & interface : command_interface_types_)
   {
@@ -819,6 +822,9 @@ CallbackReturn JointTrajectoryController::on_activate(const rclcpp_lifecycle::St
 
 CallbackReturn JointTrajectoryController::on_deactivate(const rclcpp_lifecycle::State &)
 {
+  // destogl: fixup for galactic backport - deactivate publishers
+  publisher_->on_deactivate();
+
   // TODO(anyone): How to halt when using effort commands?
   for (size_t index = 0; index < joint_names_.size(); ++index)
   {

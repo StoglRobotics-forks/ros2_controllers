@@ -180,6 +180,10 @@ CallbackReturn JointStateBroadcaster::on_configure(
 CallbackReturn JointStateBroadcaster::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // destogl: fixup for galactic backport - activate publishers
+  joint_state_publisher_->on_activate();
+  dynamic_joint_state_publisher_->on_activate();
+
   if (!init_joint_data())
   {
     RCLCPP_ERROR(
@@ -206,6 +210,10 @@ CallbackReturn JointStateBroadcaster::on_activate(
 CallbackReturn JointStateBroadcaster::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // destogl: fixup for galactic backport - deactivate publishers
+  joint_state_publisher_->on_deactivate();
+  dynamic_joint_state_publisher_->on_deactivate();
+
   return CallbackReturn::SUCCESS;
 }
 
