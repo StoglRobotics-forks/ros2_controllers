@@ -40,6 +40,9 @@ public:
   FORWARD_COMMAND_CONTROLLER_PUBLIC
   ForwardCommandController();
 
+    const rclcpp_lifecycle::State & previous_state) override;
+    const rclcpp_lifecycle::State & previous_state) override;
+    const rclcpp_lifecycle::State & previous_state) override;
 protected:
   void declare_parameters() override;
   controller_interface::CallbackReturn read_parameters() override;
