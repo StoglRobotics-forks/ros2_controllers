@@ -23,7 +23,7 @@
 
 namespace imu_sensor_broadcaster
 {
-CallbackReturn IMUSensorBroadcaster::on_init()
+controller_interface::CallbackReturn IMUSensorBroadcaster::on_init()
 {
   try
   {
@@ -40,7 +40,7 @@ CallbackReturn IMUSensorBroadcaster::on_init()
   return CallbackReturn::SUCCESS;
 }
 
-CallbackReturn IMUSensorBroadcaster::on_configure(
+controller_interface::CallbackReturn IMUSensorBroadcaster::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   sensor_name_ = node_->get_parameter("sensor_name").as_string();
@@ -99,7 +99,8 @@ controller_interface::InterfaceConfiguration IMUSensorBroadcaster::state_interfa
   return state_interfaces_config;
 }
 
-CallbackReturn IMUSensorBroadcaster::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
+controller_interface::CallbackReturn IMUSensorBroadcaster::on_activate(
+  const rclcpp_lifecycle::State & /*previous_state*/)
 {
   // destogl: fixup for galactic backport - activate publishers
   sensor_state_publisher_->on_activate();
@@ -108,7 +109,7 @@ CallbackReturn IMUSensorBroadcaster::on_activate(const rclcpp_lifecycle::State &
   return CallbackReturn::SUCCESS;
 }
 
-CallbackReturn IMUSensorBroadcaster::on_deactivate(
+controller_interface::CallbackReturn IMUSensorBroadcaster::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   // destogl: fixup for galactic backport - deactivate publishers
