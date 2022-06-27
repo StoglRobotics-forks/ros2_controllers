@@ -171,7 +171,7 @@ protected:
   double cmd_timeout_;
   // True if holding position or repeating last trajectory point in case of success
   std::atomic<bool> rt_is_holding_{false};
-  // TODO(karsten1987): eventually activate and deactivate subscriber directly when its supported
+  // TODO(karsten1987): eventually activate and deactivate subscriber directly when it's supported
   std::atomic<bool> subscriber_is_active_{false};
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_command_subscriber_ =
     nullptr;

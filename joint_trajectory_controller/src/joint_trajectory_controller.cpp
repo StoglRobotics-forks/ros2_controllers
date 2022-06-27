@@ -274,6 +274,9 @@ controller_interface::return_type JointTrajectoryController::update(
     if (!current_trajectory_->is_sampled_already())
     {
       first_sample = true;
+      // Reset Ruckig vel/accel/jerk smoothing
+      current_trajectory_->reset_ruckig_smoothing();
+
       if (params_.interpolate_from_desired_state || params_.open_loop_control)
       {
         if (std::abs(last_commanded_time_.seconds()) < std::numeric_limits<float>::epsilon())

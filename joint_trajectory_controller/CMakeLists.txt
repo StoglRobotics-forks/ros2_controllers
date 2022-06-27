@@ -18,6 +18,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp_lifecycle
   realtime_tools
   rsl
+  ruckig
   trajectory_msgs
   urdf
 )
@@ -56,6 +57,7 @@ target_link_libraries(joint_trajectory_controller PUBLIC
                       rclcpp_lifecycle::rclcpp_lifecycle
                       realtime_tools::realtime_tools
                       rsl::rsl
+                      ruckig::ruckig
                       urdf::urdf
                       angles::angles
                       ${trajectory_msgs_TARGETS}
