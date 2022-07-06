@@ -63,6 +63,26 @@ Other features
 
 * Optional smooth deceleration on cancel: Instead of abruptly holding position, the controller can decelerate joints to a stop using configurable per-joint deceleration limits. See :ref:`joint_trajectory_controller_decelerate_on_cancel`.
 
+ros2_control interfaces
+------------------------
+
+References
+^^^^^^^^^^^
+(the controller is not yet implemented as chainable controller)
+
+States
+^^^^^^^
+The state interfaces are defined with ``joints`` and ``state_interfaces`` parameters as follows: ``<joint>/<state_interface>``.
+Supported state interfaces are ``position``, ``velocity``, ``acceleration`` and ``effort`` as defined in the [hardware_interface/hardware_interface_type_values.hpp](https://github.com/ros-controls/ros2_control/blob/master/hardware_interface/include/hardware_interface/types/hardware_interface_type_values.hpp).
+Legal combinations of state interfaces are:
+- ``position``
+- ``position`` and ``velocity``
+- ``position``, ``velocity`` and ``acceleration``
+- ``effort``
+
+Commands
+^^^^^^^^^
+
 
 Using Joint Trajectory Controller(s)
 ------------------------------------
