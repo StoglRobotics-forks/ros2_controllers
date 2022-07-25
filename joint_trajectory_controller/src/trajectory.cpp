@@ -23,11 +23,15 @@
 
 namespace joint_trajectory_controller
 {
-Trajectory::Trajectory() : trajectory_start_time_(0), time_before_traj_msg_(0) {}
+Trajectory::Trajectory()
+: trajectory_start_time_(0), time_before_traj_msg_(0), sampled_already_(false),
+{
+}
 
 Trajectory::Trajectory(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
 : trajectory_msg_(joint_trajectory),
-  trajectory_start_time_(static_cast<rclcpp::Time>(joint_trajectory->header.stamp))
+  trajectory_start_time_(static_cast<rclcpp::Time>(joint_trajectory->header.stamp)),
+  sampled_already_(false),
 {
 }
 
@@ -61,7 +65,8 @@ bool Trajectory::sample(
   const rclcpp::Time & sample_time,
   const interpolation_methods::InterpolationMethod interpolation_method,
   trajectory_msgs::msg::JointTrajectoryPoint & output_state,
-  TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr)
+  TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr,
+  const rclcpp::Duration & period, const std::vector<joint_limits::JointLimits> & joint_limits)
 {
   THROW_ON_NULLPTR(trajectory_msg_)
 
@@ -89,6 +94,7 @@ bool Trajectory::sample(
     return false;
   }
 
+  // TODO(anyone): this shouldn't be initialized at runtime
   output_state = trajectory_msgs::msg::JointTrajectoryPoint();
   auto & first_point_in_msg = trajectory_msg_->points[0];
   const rclcpp::Time first_point_timestamp =
@@ -139,8 +145,7 @@ bool Trajectory::sample(
       else
       {
         // it changes points only if position and velocity do not exist, but their derivatives
-        deduce_from_derivatives(
-          point, next_point, state_before_traj_msg_.positions.size(), (t1 - t0).seconds());
+        deduce_from_derivatives(point, next_point, point.positions.size(), (t1 - t0).seconds());
 
         interpolate_between_points(t0, point, t1, next_point, sample_time, output_state);
       }
