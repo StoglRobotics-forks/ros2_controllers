@@ -16,13 +16,15 @@
 #define JOINT_TRAJECTORY_CONTROLLER__TRAJECTORY_HPP_
 
 #include <memory>
-#include <ruckig/ruckig.hpp>
 #include <vector>
 
+#include "joint_limits/joint_limits.hpp"
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "rclcpp/time.hpp"
+#include "ruckig/ruckig.hpp"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
+
 namespace joint_trajectory_controller
 {
 using TrajectoryPointIter = std::vector<trajectory_msgs::msg::JointTrajectoryPoint>::iterator;
@@ -54,7 +56,9 @@ public:
     const trajectory_msgs::msg::JointTrajectoryPoint & current_point,
     const std::vector<bool> & joints_angle_wraparound = std::vector<bool>());
 
-  void update(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory);
+  void update(
+    std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory,
+    const std::vector<joint_limits::JointLimits> & joint_limits);
 
   /// Find the segment (made up of 2 points) and its expected state from the
   /// containing trajectory.

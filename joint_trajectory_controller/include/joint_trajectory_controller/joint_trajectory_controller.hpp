@@ -29,6 +29,7 @@
 #include "controller_interface/controller_interface.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "joint_limits/joint_limits.hpp"
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "joint_trajectory_controller/tolerances.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
@@ -204,6 +205,9 @@ protected:
 
   // callback for topic interface
   void topic_callback(const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> msg);
+
+  // joint limits for JTC
+  std::vector<joint_limits::JointLimits> joint_limits_;
 
   // callbacks for action_server_
   rclcpp_action::GoalResponse goal_received_callback(

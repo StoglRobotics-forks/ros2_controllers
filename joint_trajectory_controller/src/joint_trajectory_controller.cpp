@@ -25,6 +25,7 @@
 #include "angles/angles.h"
 #include "controller_interface/helpers.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "joint_limits/joint_limits_rosparam.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
 #include "lifecycle_msgs/msg/state.hpp"
 #include "rclcpp/logging.hpp"
@@ -257,7 +258,7 @@ controller_interface::return_type JointTrajectoryController::update(
     fill_partial_goal(*new_external_msg);
     sort_to_local_joint_order(*new_external_msg);
     // TODO(denis): Add here integration of position and velocity
-    current_trajectory_->update(*new_external_msg);
+    current_trajectory_->update(*new_external_msg, joint_limits_);
   }
 
   // current state update
@@ -274,6 +275,7 @@ controller_interface::return_type JointTrajectoryController::update(
     if (!current_trajectory_->is_sampled_already())
     {
       first_sample = true;
+
       // Reset Ruckig vel/accel/jerk smoothing
       current_trajectory_->reset_ruckig_smoothing();
 
@@ -987,6 +989,15 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
     ff_velocity_scale_.resize(num_cmd_joints_);
 
     update_pids();
+  }
+
+  joint_limits_.resize(dof_);
+  for (size_t i = 0; i < joint_limits_.size(); ++i)
+  {
+    if (joint_limits::declare_parameters(params_.joints[i], get_node()))
+    {
+      joint_limits::get_joint_limits(params_.joints[i], get_node(), joint_limits_[i]);
+    }
   }
 
   if (params_.state_interfaces.empty())
