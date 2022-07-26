@@ -994,9 +994,12 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
   joint_limits_.resize(dof_);
   for (size_t i = 0; i < joint_limits_.size(); ++i)
   {
-    if (joint_limits::declare_parameters(params_.joints[i], get_node()))
+    if (joint_limits::declare_parameters(command_joint_names_[i], get_node()))
     {
-      joint_limits::get_joint_limits(params_.joints[i], get_node(), joint_limits_[i]);
+      joint_limits::get_joint_limits(command_joint_names_[i], get_node(), joint_limits_[i]);
+      RCLCPP_INFO(
+        get_node()->get_logger(), "Limits for joint %zu (%s) are: \n%s", i,
+        command_joint_names_[i].c_str(), joint_limits_[i].to_string().c_str());
     }
   }
 
@@ -1803,8 +1806,9 @@ bool JointTrajectoryController::validate_trajectory_msg(
   {
     const std::string & incoming_joint_name = trajectory.joint_names[i];
 
-    auto it = std::find(params_.joints.begin(), params_.joints.end(), incoming_joint_name);
-    if (it == params_.joints.end())
+    auto it =
+      std::find(command_joint_names_.begin(), command_joint_names_.end(), incoming_joint_name);
+    if (it == command_joint_names_.end())
     {
       RCLCPP_ERROR(
         get_node()->get_logger(), "Incoming joint %s doesn't match the controller's joints.",
