@@ -28,27 +28,30 @@
 
 namespace joint_trajectory_controller
 {
-
 namespace
 {
 // Safe default joint kinematic limits for Ruckig, in case none is defined in the URDF or
 // joint_limits.yaml
-constexpr double DEFAULT_MAX_VELOCITY = 1.5;       // rad/s
+constexpr double DEFAULT_MAX_VELOCITY = 1.5;      // rad/s
 constexpr double DEFAULT_MAX_ACCELERATION = 5.0;  // rad/s^2
 constexpr double DEFAULT_MAX_JERK = 200.0;        // rad/s^3
-}
+}  // namespace
 
 Trajectory::Trajectory()
 : trajectory_start_time_(0),
   time_before_traj_msg_(0),
   sampled_already_(false),
-  have_previous_ruckig_output_(false) {}
+  have_previous_ruckig_output_(false)
+{
+}
 
 Trajectory::Trajectory(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
 : trajectory_msg_(joint_trajectory),
   trajectory_start_time_(static_cast<rclcpp::Time>(joint_trajectory->header.stamp)),
   sampled_already_(false),
-  have_previous_ruckig_output_(false) {}
+  have_previous_ruckig_output_(false)
+{
+}
 
 Trajectory::Trajectory(
   const rclcpp::Time & current_time,
@@ -129,31 +132,44 @@ void Trajectory::update(
   ruckig_input_ = ruckig::InputParameter<ruckig::DynamicDOFs>(dim);
   ruckig_output_ = ruckig::OutputParameter<ruckig::DynamicDOFs>(dim);
 
+  ruckig_input_.max_velocity.clear();
+  ruckig_input_.max_velocity.resize(dim, DEFAULT_MAX_VELOCITY);
+  ruckig_input_.max_acceleration.clear();
+  ruckig_input_.max_acceleration.resize(dim, DEFAULT_MAX_ACCELERATION);
+  ruckig_input_.max_jerk.clear();
+  ruckig_input_.max_jerk.resize(dim, DEFAULT_MAX_JERK);
+
   for (size_t i = 0; i < dim; ++i)
   {
+    RCLCPP_INFO(
+      rclcpp::get_logger("trajectory"), "max vel for joint %zu is %f", i,
+      ruckig_input_.max_velocity[i]);
+    RCLCPP_INFO(
+      rclcpp::get_logger("trajectory"), "max acc for joint %zu is %f", i,
+      ruckig_input_.max_acceleration[i]);
+    RCLCPP_INFO(
+      rclcpp::get_logger("trajectory"), "max jerk for joint %zu is %f", i,
+      ruckig_input_.max_jerk[i]);
     if (joint_limits[i].has_velocity_limits)
     {
       ruckig_input_.max_velocity[i] = joint_limits[i].max_velocity;
-    }
-    else
-    {
-      ruckig_input_.max_velocity[i] = DEFAULT_MAX_VELOCITY;
+      RCLCPP_INFO(
+        rclcpp::get_logger("trajectory"), "Setting max vel for joint %zu to %f", i,
+        joint_limits[i].max_velocity);
     }
     if (joint_limits[i].has_acceleration_limits)
     {
       ruckig_input_.max_acceleration[i] = joint_limits[i].max_acceleration;
-    }
-    else
-    {
-      ruckig_input_.max_acceleration[i] = DEFAULT_MAX_ACCELERATION;
+      RCLCPP_INFO(
+        rclcpp::get_logger("trajectory"), "Setting max acc for joint %zu to %f", i,
+        joint_limits[i].max_acceleration);
     }
     if (joint_limits[i].has_jerk_limits)
     {
       ruckig_input_.max_jerk[i] = joint_limits[i].max_jerk;
-    }
-    else
-    {
-      ruckig_input_.max_velocity[i] = DEFAULT_MAX_JERK;
+      RCLCPP_INFO(
+        rclcpp::get_logger("trajectory"), "Setting max jerk for joint %zu to %f", i,
+        joint_limits[i].max_jerk);
     }
   }
 }
@@ -247,7 +263,7 @@ bool Trajectory::sample(
           point, next_point, state_before_traj_msg_.positions.size(), (t1 - t0).seconds());
 
         if (!interpolate_between_points(
-          t0, point, t1, next_point, sample_time, do_ruckig_smoothing, output_state))
+              t0, point, t1, next_point, sample_time, do_ruckig_smoothing, output_state))
         {
           return false;
         }
@@ -445,7 +461,8 @@ bool Trajectory::interpolate_between_points(
     static rclcpp::Duration duration_so_far_prev_timestep = rclcpp::Duration{0, 0};
     // Have a check to make sure that the duration at the previous timestep is
     // always smaller than the current timestep
-        if (duration_so_far.seconds() < duration_so_far_prev_timestep.seconds()) {
+    if (duration_so_far.seconds() < duration_so_far_prev_timestep.seconds())
+    {
       duration_so_far_prev_timestep = rclcpp::Duration{0, 0};
     }
     // If Ruckig has run previously on this trajectory, use the output as input for the next cycle
@@ -486,8 +503,8 @@ bool Trajectory::interpolate_between_points(
     // See https://github.com/pantor/ruckig/issues/118
     // Current assumption is that the next update time is equivalent to the duration
     // from the last timestep to the current timestep
-    smoother_ = std::make_unique<ruckig::Ruckig<ruckig::DynamicDOFs>>(dim,
-      duration_so_far.seconds() - duration_so_far_prev_timestep.seconds());
+    smoother_ = std::make_unique<ruckig::Ruckig<ruckig::DynamicDOFs>>(
+      dim, duration_so_far.seconds() - duration_so_far_prev_timestep.seconds());
     ruckig::Result result = smoother_->update(ruckig_input_, ruckig_output_);
 
     // Time elapsed for the previous call is now the time elapsed at the current call
