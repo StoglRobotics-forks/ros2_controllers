@@ -103,6 +103,8 @@ public:
     const interpolation_methods::InterpolationMethod interpolation_method,
     trajectory_msgs::msg::JointTrajectoryPoint & output_state,
     TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr,
+    const rclcpp::Duration & period = rclcpp::Duration(0, 0),
+    const std::vector<joint_limits::JointLimits> & joint_limits = {},
     const bool search_monotonically_increasing = true);
 
   /**
@@ -131,7 +133,9 @@ public:
     const rclcpp::Time & time_a, const trajectory_msgs::msg::JointTrajectoryPoint & state_a,
     const rclcpp::Time & time_b, const trajectory_msgs::msg::JointTrajectoryPoint & state_b,
     const rclcpp::Time & sample_time, const bool do_ruckig_smoothing,
-    trajectory_msgs::msg::JointTrajectoryPoint & output);
+    trajectory_msgs::msg::JointTrajectoryPoint & output,
+    const rclcpp::Duration & period = rclcpp::Duration(0, 0),
+    const std::vector<joint_limits::JointLimits> & joint_limits = {});
 
   TrajectoryPointConstIter begin() const;
 

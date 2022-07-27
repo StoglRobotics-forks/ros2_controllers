@@ -20,6 +20,7 @@
 
 #include <cmath>
 #include <memory>
+#include <algorithm>
 
 #include "angles/angles.h"
 #include "hardware_interface/macros.hpp"
@@ -179,6 +180,7 @@ bool Trajectory::sample(
   const interpolation_methods::InterpolationMethod interpolation_method,
   trajectory_msgs::msg::JointTrajectoryPoint & output_state,
   TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr,
+  const rclcpp::Duration & period, const std::vector<joint_limits::JointLimits> & joint_limits,
   const bool search_monotonically_increasing)
 {
   THROW_ON_NULLPTR(trajectory_msg_)
@@ -231,7 +233,7 @@ bool Trajectory::sample(
 
       interpolate_between_points(
         time_before_traj_msg_, state_before_traj_msg_, first_point_timestamp, first_point_in_msg,
-        sample_time, do_ruckig_smoothing, output_state);
+        sample_time, do_ruckig_smoothing, output_state, period, joint_limits);
     }
     start_segment_itr = begin();  // no segments before the first
     end_segment_itr = begin();
@@ -263,7 +265,8 @@ bool Trajectory::sample(
           point, next_point, state_before_traj_msg_.positions.size(), (t1 - t0).seconds());
 
         if (!interpolate_between_points(
-              t0, point, t1, next_point, sample_time, do_ruckig_smoothing, output_state))
+              t0, point, t1, next_point, sample_time, do_ruckig_smoothing, output_state, period,
+              joint_limits))
         {
           return false;
         }
@@ -304,7 +307,9 @@ bool Trajectory::interpolate_between_points(
   const rclcpp::Time & time_a, const trajectory_msgs::msg::JointTrajectoryPoint & state_a,
   const rclcpp::Time & time_b, const trajectory_msgs::msg::JointTrajectoryPoint & state_b,
   const rclcpp::Time & sample_time, const bool do_ruckig_smoothing,
-  trajectory_msgs::msg::JointTrajectoryPoint & output)
+  trajectory_msgs::msg::JointTrajectoryPoint & output,
+  const rclcpp::Duration & period,
+  const std::vector<joint_limits::JointLimits> & joint_limits)
 {
   rclcpp::Duration duration_so_far = sample_time - time_a;
   rclcpp::Duration duration_btwn_points = time_b - time_a;
@@ -424,7 +429,7 @@ bool Trajectory::interpolate_between_points(
       double start_acc = state_a.accelerations[i];
       double end_pos = state_b.positions[i];
       double end_vel = state_b.velocities[i];
-      double end_acc = state_b.accelerations[i];
+      double end_acc = state_b.accelerations[i];   
 
       double coefficients[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
       coefficients[0] = start_pos;
@@ -457,14 +462,6 @@ bool Trajectory::interpolate_between_points(
   // Optionally apply velocity, acceleration, and jerk limits with Ruckig
   if ((duration_so_far.seconds() > 0) && do_ruckig_smoothing)
   {
-    // Create a duration variable that tracks the elapsed time at the previous function call
-    static rclcpp::Duration duration_so_far_prev_timestep = rclcpp::Duration{0, 0};
-    // Have a check to make sure that the duration at the previous timestep is
-    // always smaller than the current timestep
-    if (duration_so_far.seconds() < duration_so_far_prev_timestep.seconds())
-    {
-      duration_so_far_prev_timestep = rclcpp::Duration{0, 0};
-    }
     // If Ruckig has run previously on this trajectory, use the output as input for the next cycle
     if (have_previous_ruckig_output_)
     {
@@ -495,20 +492,42 @@ bool Trajectory::interpolate_between_points(
     }
     // Target state comes from the polynomial interpolation
     ruckig_input_.target_position = output.positions;
-    ruckig_input_.target_velocity = output.velocities;
-    ruckig_input_.target_acceleration = output.accelerations;
+    // Set the target velocities to follow the joint limits (max_velocity is both the positive and negative velocity limit)
+    // NOTE(rebase): switched from indexing `joint_limits[i]` directly to `ruckig_input_.max_velocity[i]`.
+    // `joint_limits` now defaults to an empty vector (for backward compat with pre-existing callers),
+    // so indexing it directly here is unsafe. `ruckig_input_.max_velocity[i]` is always populated by
+    // update() (real limit or DEFAULT_MAX_VELOCITY), so it's equivalent when joint_limits is passed
+    // and safe otherwise. Original version left below for review:
+    // for (size_t i = 0; i < dim; ++i) {
+    //   ruckig_input_.target_velocity[i] = std::clamp(output.velocities[i],
+    //                                               (joint_limits[i].max_velocity <= 0)? joint_limits[i].max_velocity:-1.0*joint_limits[i].max_velocity,
+    //                                               (joint_limits[i].max_velocity > 0)? joint_limits[i].max_velocity:-1.0*joint_limits[i].max_velocity);
+    // }
+    for (size_t i = 0; i < dim; ++i) {
+      ruckig_input_.target_velocity[i] = std::clamp(output.velocities[i],
+                                                  (ruckig_input_.max_velocity[i] <= 0)? ruckig_input_.max_velocity[i]:-1.0*ruckig_input_.max_velocity[i],
+                                                  (ruckig_input_.max_velocity[i] > 0)? ruckig_input_.max_velocity[i]:-1.0*ruckig_input_.max_velocity[i]);
+    }
+    // Set the target accelerations to follow the joint limits (max_acceleration is both the positive and negative acceleration limit)
+    // NOTE(rebase): same reasoning as above, using ruckig_input_.max_acceleration[i] instead of
+    // joint_limits[i].max_acceleration. Original version left below for review:
+    // for (size_t i = 0; i < dim; ++i) {
+    //   ruckig_input_.target_acceleration[i] = std::clamp(output.accelerations[i],
+    //                                               (joint_limits[i].max_acceleration <= 0)? joint_limits[i].max_acceleration:-1.0*joint_limits[i].max_acceleration,
+    //                                               (joint_limits[i].max_acceleration > 0)? joint_limits[i].max_acceleration:-1.0*joint_limits[i].max_acceleration);
+    // }
+    for (size_t i = 0; i < dim; ++i) {
+      ruckig_input_.target_acceleration[i] = std::clamp(output.accelerations[i],
+                                                  (ruckig_input_.max_acceleration[i] <= 0)? ruckig_input_.max_acceleration[i]:-1.0*ruckig_input_.max_acceleration[i],
+                                                  (ruckig_input_.max_acceleration[i] > 0)? ruckig_input_.max_acceleration[i]:-1.0*ruckig_input_.max_acceleration[i]);
+    }
 
     // TODO(andyz): update only the Ruckig::delta_time member of the smoother.
     // dim should not update since it doesn't change with every new trajectory
     // See https://github.com/pantor/ruckig/issues/118
-    // Current assumption is that the next update time is equivalent to the duration
-    // from the last timestep to the current timestep
     smoother_ = std::make_unique<ruckig::Ruckig<ruckig::DynamicDOFs>>(
-      dim, duration_so_far.seconds() - duration_so_far_prev_timestep.seconds());
+      dim, period.seconds());
     ruckig::Result result = smoother_->update(ruckig_input_, ruckig_output_);
-
-    // Time elapsed for the previous call is now the time elapsed at the current call
-    duration_so_far_prev_timestep = duration_so_far;
 
     // If Ruckig was successful, update the output state
     // Else, just pass the output from the polynomial interpolation
