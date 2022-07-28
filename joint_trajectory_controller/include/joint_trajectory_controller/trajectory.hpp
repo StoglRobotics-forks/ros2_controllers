@@ -132,7 +132,7 @@ public:
   bool interpolate_between_points(
     const rclcpp::Time & time_a, const trajectory_msgs::msg::JointTrajectoryPoint & state_a,
     const rclcpp::Time & time_b, const trajectory_msgs::msg::JointTrajectoryPoint & state_b,
-    const rclcpp::Time & sample_time, const bool do_ruckig_smoothing,
+    const rclcpp::Time & sample_time, const bool do_ruckig_smoothing, const bool skip_splines,
     trajectory_msgs::msg::JointTrajectoryPoint & output,
     const rclcpp::Duration & period = rclcpp::Duration(0, 0),
     const std::vector<joint_limits::JointLimits> & joint_limits = {});
@@ -161,7 +161,7 @@ public:
    */
   size_t last_sample_index() const { return last_sample_idx_; }
 
-  void reset_ruckig_smoothing() { have_previous_ruckig_output_ = false; }
+//   void reset_ruckig_smoothing() { have_previous_ruckig_output_ = false; }
 
 private:
   void deduce_from_derivatives(
