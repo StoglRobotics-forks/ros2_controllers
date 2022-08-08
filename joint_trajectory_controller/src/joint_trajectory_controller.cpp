@@ -258,7 +258,7 @@ controller_interface::return_type JointTrajectoryController::update(
     fill_partial_goal(*new_external_msg);
     sort_to_local_joint_order(*new_external_msg);
     // TODO(denis): Add here integration of position and velocity
-    current_trajectory_->update(*new_external_msg, joint_limits_);
+    current_trajectory_->update(*new_external_msg, joint_limits_, period);
   }
 
   // current state update
@@ -277,7 +277,7 @@ controller_interface::return_type JointTrajectoryController::update(
       first_sample = true;
 
       // Reset Ruckig vel/accel/jerk smoothing
-//       current_trajectory_->reset_ruckig_smoothing();
+      //       current_trajectory_->reset_ruckig_smoothing();
 
       if (params_.interpolate_from_desired_state || params_.open_loop_control)
       {
@@ -303,7 +303,7 @@ controller_interface::return_type JointTrajectoryController::update(
     // Sample expected state from the trajectory
     current_trajectory_->sample(
       traj_time_, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr,
-      period, joint_limits_);
+      period, joint_limits_, splines_state_, ruckig_state_, ruckig_input_state_);
     state_desired_.time_from_start = traj_time_ - current_trajectory_->time_from_start();
 
     // Sample setpoint for next control cycle
@@ -573,7 +573,9 @@ controller_interface::return_type JointTrajectoryController::update(
     }
   }
 
-  publish_state(time, state_desired_, state_current_, state_error_);
+  publish_state(
+    time, state_desired_, state_current_, state_error_, splines_state_, ruckig_state_,
+    ruckig_input_state_);
   return controller_interface::return_type::OK;
 }
 
@@ -1140,6 +1142,59 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
     state_msg_.output.effort.resize(dof_);
   }
 
+  ////////////////////// BEGIN
+  splines_output_pub_ = get_node()->create_publisher<ControllerStateMsg>(
+    "~/splines_output", rclcpp::SystemDefaultsQoS());
+  splines_output_publisher_ = std::make_unique<StatePublisher>(splines_output_pub_);
+
+  splines_output_publisher_->lock();
+  splines_output_publisher_->msg_.joint_names = command_joint_names_;
+  splines_output_publisher_->msg_.reference.positions.resize(dof_);
+  splines_output_publisher_->msg_.reference.velocities.resize(dof_);
+  splines_output_publisher_->msg_.reference.accelerations.resize(dof_);
+  splines_output_publisher_->msg_.feedback.positions.resize(dof_);
+  splines_output_publisher_->msg_.error.positions.resize(dof_);
+  splines_output_publisher_->msg_.feedback.velocities.resize(dof_);
+  splines_output_publisher_->msg_.error.velocities.resize(dof_);
+  splines_output_publisher_->msg_.feedback.accelerations.resize(dof_);
+  splines_output_publisher_->msg_.error.accelerations.resize(dof_);
+  splines_output_publisher_->unlock();
+
+  ruckig_input_pub_ = get_node()->create_publisher<ControllerStateMsg>(
+    "~/ruckig_input_current", rclcpp::SystemDefaultsQoS());
+  ruckig_input_publisher_ = std::make_unique<StatePublisher>(ruckig_input_pub_);
+
+  ruckig_input_publisher_->lock();
+  ruckig_input_publisher_->msg_.joint_names = command_joint_names_;
+  ruckig_input_publisher_->msg_.reference.positions.resize(dof_);
+  ruckig_input_publisher_->msg_.reference.velocities.resize(dof_);
+  ruckig_input_publisher_->msg_.reference.accelerations.resize(dof_);
+  ruckig_input_publisher_->msg_.feedback.positions.resize(dof_);
+  ruckig_input_publisher_->msg_.error.positions.resize(dof_);
+  ruckig_input_publisher_->msg_.feedback.velocities.resize(dof_);
+  ruckig_input_publisher_->msg_.error.velocities.resize(dof_);
+  ruckig_input_publisher_->msg_.feedback.accelerations.resize(dof_);
+  ruckig_input_publisher_->msg_.error.accelerations.resize(dof_);
+  ruckig_input_publisher_->unlock();
+
+  ruckig_input_target_pub_ = get_node()->create_publisher<ControllerStateMsg>(
+    "~/ruckig_input_target", rclcpp::SystemDefaultsQoS());
+  ruckig_input_target_publisher_ = std::make_unique<StatePublisher>(ruckig_input_target_pub_);
+
+  ruckig_input_target_publisher_->lock();
+  ruckig_input_target_publisher_->msg_.joint_names = command_joint_names_;
+  ruckig_input_target_publisher_->msg_.reference.positions.resize(dof_);
+  ruckig_input_target_publisher_->msg_.reference.velocities.resize(dof_);
+  ruckig_input_target_publisher_->msg_.reference.accelerations.resize(dof_);
+  ruckig_input_target_publisher_->msg_.feedback.positions.resize(dof_);
+  ruckig_input_target_publisher_->msg_.error.positions.resize(dof_);
+  ruckig_input_target_publisher_->msg_.feedback.velocities.resize(dof_);
+  ruckig_input_target_publisher_->msg_.error.velocities.resize(dof_);
+  ruckig_input_target_publisher_->msg_.feedback.accelerations.resize(dof_);
+  ruckig_input_target_publisher_->msg_.error.accelerations.resize(dof_);
+  ruckig_input_target_publisher_->unlock();
+  /////////// END
+
   // action server configuration
   if (params_.allow_partial_joints_goal)
   {
@@ -1457,7 +1512,9 @@ bool JointTrajectoryController::reset()
 
 void JointTrajectoryController::publish_state(
   const rclcpp::Time & time, const JointTrajectoryPoint & desired_state,
-  const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error)
+  const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error,
+  const JointTrajectoryPoint & splines_output, const JointTrajectoryPoint & ruckig_input_target,
+  const JointTrajectoryPoint & ruckig_input)
 {
   if (state_publisher_)
   {
@@ -1486,6 +1543,39 @@ void JointTrajectoryController::publish_state(
     state_msg_.speed_scaling_factor = scaling_factor_.load();
 
     state_publisher_->try_publish(state_msg_);
+  }
+
+  if (splines_output_publisher_ && splines_output_publisher_->trylock())
+  {
+    splines_output_publisher_->msg_.header.stamp = state_publisher_->msg_.header.stamp;
+    splines_output_publisher_->msg_.feedback.positions = splines_output.positions;
+    splines_output_publisher_->msg_.feedback.velocities = splines_output.velocities;
+    splines_output_publisher_->msg_.feedback.accelerations = splines_output.accelerations;
+    splines_output_publisher_->msg_.feedback.effort = splines_output.effort;
+
+    splines_output_publisher_->unlockAndPublish();
+  }
+
+  if (ruckig_input_publisher_ && ruckig_input_publisher_->trylock())
+  {
+    ruckig_input_publisher_->msg_.header.stamp = state_publisher_->msg_.header.stamp;
+    ruckig_input_publisher_->msg_.feedback.positions = ruckig_input.positions;
+    ruckig_input_publisher_->msg_.feedback.velocities = ruckig_input.velocities;
+    ruckig_input_publisher_->msg_.feedback.accelerations = ruckig_input.accelerations;
+    ruckig_input_publisher_->msg_.feedback.effort = ruckig_input.effort;
+
+    ruckig_input_publisher_->unlockAndPublish();
+  }
+
+  if (ruckig_input_target_publisher_ && ruckig_input_target_publisher_->trylock())
+  {
+    ruckig_input_target_publisher_->msg_.header.stamp = state_publisher_->msg_.header.stamp;
+    ruckig_input_target_publisher_->msg_.feedback.positions = ruckig_input_target.positions;
+    ruckig_input_target_publisher_->msg_.feedback.velocities = ruckig_input_target.velocities;
+    ruckig_input_target_publisher_->msg_.feedback.accelerations = ruckig_input_target.accelerations;
+    ruckig_input_target_publisher_->msg_.feedback.effort = ruckig_input_target.effort;
+
+    ruckig_input_target_publisher_->unlockAndPublish();
   }
 }
 
