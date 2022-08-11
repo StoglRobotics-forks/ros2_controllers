@@ -15,8 +15,6 @@
 # Authors: Denis Štogl, Lovro Ivanov
 #
 
-import math
-
 import rclpy
 from rclpy.duration import Duration
 from rclpy.node import Node

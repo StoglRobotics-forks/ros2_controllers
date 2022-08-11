@@ -56,6 +56,13 @@ controller_interface::CallbackReturn JointTrajectoryController::on_init()
     // Create the parameter listener and get the parameters
     param_listener_ = std::make_shared<ParamListener>(get_node());
     params_ = param_listener_->get_params();
+
+    // NOTE(rebase): jazzy migrated all other parameters (joints, command_joints,
+    // allow_partial_joints_goal, open_loop_control, etc.) to the generate_parameter_library
+    // params_ struct above, dropping their individual auto_declare<>() calls. This parameter is
+    // new on this branch and has no YAML entry, so it keeps the original auto_declare<>() call.
+    disable_closed_loop_pid_adapter_ =
+      auto_declare<bool>("disable_closed_loop_pid_adapter", disable_closed_loop_pid_adapter_);
   }
   catch (const std::exception & e)
   {
@@ -960,6 +967,9 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
     return CallbackReturn::FAILURE;
   }
 
+  disable_closed_loop_pid_adapter_ =
+    get_node()->get_parameter("disable_closed_loop_pid_adapter").as_bool();
+
   // Check if only allowed interface types are used and initialize storage to avoid memory
   // allocation during activation
   joint_command_interface_.resize(allowed_interface_types_.size());
@@ -978,11 +988,34 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
     contains_interface_type(params_.command_interfaces, hardware_interface::HW_IF_EFFORT);
 
   // if there is only velocity or if there is effort command interface
-  // then use also PID adapter
+  // then use also PID adapter, unless explicitly disabled
+  // NOTE(rebase): the incoming commit's velocity/effort validation (checking that 'velocity' is
+  // paired with 'position', that 'acceleration' isn't used alone, that 'effort' is used alone)
+  // was superseded by jazzy's own state-interface-based validation further below in this
+  // function. Only the disable_closed_loop_pid_adapter_ feature itself is new here.
   use_closed_loop_pid_adapter_ =
-    (has_velocity_command_interface_ && params_.command_interfaces.size() == 1 &&
-     !params_.open_loop_control) ||
-    (has_effort_command_interface_ && params_.command_interfaces.size() == 1);
+    !disable_closed_loop_pid_adapter_ &&
+    ((has_velocity_command_interface_ && params_.command_interfaces.size() == 1 &&
+      !params_.open_loop_control) ||
+     (has_effort_command_interface_ && params_.command_interfaces.size() == 1));
+
+  if (disable_closed_loop_pid_adapter_)
+  {
+    if (has_velocity_command_interface_ && params_.command_interfaces.size() == 1)
+    {
+      RCLCPP_WARN(
+        logger,
+        "Using only 'velocity' command interface without closed loop PID adapter because it is "
+        "disabled.");
+    }
+    if (has_effort_command_interface_ && params_.command_interfaces.size() == 1)
+    {
+      RCLCPP_WARN(
+        logger,
+        "Using only 'effort' command interface without closed loop PID adapter because it is "
+        "disabled.");
+    }
+  }
 
   tmp_command_.resize(dof_, 0.0);
 
@@ -1798,7 +1831,7 @@ void JointTrajectoryController::sort_to_local_joint_order(
   std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory_msg) const
 {
   // rearrange all points in the trajectory message based on mapping
-  std::vector<size_t> mapping_vector = mapping(trajectory_msg->joint_names, params_.joints);
+  std::vector<size_t> mapping_vector = mapping(trajectory_msg->joint_names, command_joint_names_);
   auto remap = [this](
                  const std::vector<double> & to_remap,
                  const std::vector<size_t> & mapping) -> std::vector<double>
@@ -1810,7 +1843,9 @@ void JointTrajectoryController::sort_to_local_joint_order(
     if (to_remap.size() != mapping.size())
     {
       RCLCPP_WARN(
-        get_node()->get_logger(), "Invalid input size (%zu) for sorting", to_remap.size());
+        get_node()->get_logger(),
+        "Invalid input size for sorting. Values have size %zu and mapping size %zu",
+        to_remap.size(), mapping.size());
       return to_remap;
     }
     static std::vector<double> output(dof_, 0.0);
