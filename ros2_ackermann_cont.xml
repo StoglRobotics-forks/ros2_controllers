@@ -1,0 +1,8 @@
+<library path="ros2_ackermann_cont">
+  <class name="ros2_ackermann_cont/AckermannSteeringControllerRos2"
+         type="ros2_ackermann_cont::AckermannSteeringControllerRos2" base_class_type="controller_interface::ChainableControllerInterface">
+  <description>
+    AckermannSteeringControllerRos2 ros2_control controller.
+  </description>
+  </class>
+</library>

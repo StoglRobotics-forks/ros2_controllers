@@ -1,0 +1,9 @@
+test_ackermann_steering_controller_ros2:
+  ros__parameters:
+
+    joints:
+      - joint1
+
+    interface_name: acceleration
+
+    reference_timeout: 0.1
