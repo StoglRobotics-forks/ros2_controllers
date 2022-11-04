@@ -16,11 +16,26 @@
 #define ROS2_ACKERMANN_CONT__ACKERMANN_STEERING_CONTROLLER_ROS2_HPP_
 
 #include <chrono>
+#include <cmath>
 #include <memory>
+#include <queue>
 #include <string>
 #include <vector>
 
 #include "controller_interface/chainable_controller_interface.hpp"
+#include "diff_drive_controller/speed_limiter.hpp"
+#include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
+#include "hardware_interface/handle.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "rclcpp_lifecycle/state.hpp"
+#include "realtime_tools/realtime_box.h"
+#include "realtime_tools/realtime_buffer.h"
+#include "realtime_tools/realtime_publisher.h"
+
+
+
+#include "ros2_ackermann_cont/odometry.h"
 #include "ackermann_steering_controller_ros2_parameters.hpp"
 #include "ros2_ackermann_cont/visibility_control.h"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
@@ -33,22 +48,22 @@
 #include "control_msgs/msg/joint_controller_state.hpp"
 #include "control_msgs/msg/joint_jog.hpp"
 
+#include "tf2_msgs/msg/tf_message.hpp"
+#include "nav_msgs/msg/odometry.hpp"
+
+
+
 namespace ros2_ackermann_cont
 {
 // name constants for state interfaces
-static constexpr size_t STATE_MY_ITFS = 0;
+static constexpr size_t STATE_MY_ITFS = 2;
 
 // name constants for command interfaces
-static constexpr size_t CMD_MY_ITFS = 0;
-
-// TODO(anyone: example setup for control mode (usually you will use some enums defined in messages)
-enum class control_mode_type : std::uint8_t {
-  FAST = 0,
-  SLOW = 1,
-};
+static constexpr size_t CMD_MY_ITFS = 2;
 
 class AckermannSteeringControllerRos2 : public controller_interface::ChainableControllerInterface
 {
+
 public:
   TEMPLATES__ROS2_CONTROL__VISIBILITY_PUBLIC
   AckermannSteeringControllerRos2();
@@ -82,9 +97,9 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   // TODO(anyone): replace the state and command message types
-  using ControllerReferenceMsg = control_msgs::msg::JointJog;
-  using ControllerModeSrvType = std_srvs::srv::SetBool;
-  using ControllerStateMsg = control_msgs::msg::JointControllerState;
+  using ControllerReferenceMsg = geometry_msgs::msg::TwistStamped;
+  //using ControllerModeSrvType = std_srvs::srv::SetBool;
+  using ControllerStateMsg = nav_msgs::msg::Odometry;
 
 protected:
   std::shared_ptr<ackermann_steering_controller_ros2::ParamListener> param_listener_;
@@ -97,9 +112,6 @@ protected:
   realtime_tools::RealtimeBuffer<std::shared_ptr<ControllerReferenceMsg>> input_ref_;
   rclcpp::Duration ref_timeout_ = rclcpp::Duration::from_seconds(0.0);  // 0ms
 
-  rclcpp::Service<ControllerModeSrvType>::SharedPtr set_slow_control_mode_service_;
-  realtime_tools::RealtimeBuffer<control_mode_type> control_mode_;
-
   using ControllerStatePublisher = realtime_tools::RealtimePublisher<ControllerStateMsg>;
 
   rclcpp::Publisher<ControllerStateMsg>::SharedPtr s_publisher_;
@@ -110,11 +122,129 @@ protected:
 
   bool on_set_chained_mode(bool chained_mode) override;
 
+  bool use_stamped_vel_ = true;
+
 private:
   // callback for topic interface
   TEMPLATES__ROS2_CONTROL__VISIBILITY_LOCAL
   void reference_callback(const std::shared_ptr<ControllerReferenceMsg> msg);
-};
+
+  std::string name_;
+
+  /// Velocity command related:
+  struct Commands
+  {
+    double lin;
+    double ang;
+    rclcpp::Time stamp;
+
+    Commands() : lin(0.0), ang(0.0), stamp(0.0) {}
+  };
+  realtime_tools::RealtimeBuffer<Commands> command_;
+  Commands command_struct_;
+  ros::Subscriber sub_command_;
+
+  struct WheelParams
+  {
+    /// Wheel separation, wrt the midpoint of the wheel width:
+    double wheel_separation_h_;
+    /// Wheel radius (assuming it's the same for the left and right wheels):
+    double wheel_radius_;
+    /// Wheel separation and radius calibration multipliers:
+    double wheel_separation_h_multiplier_;
+    double wheel_radius_multiplier_;
+    double steer_pos_multiplier_;
+    /// Wheel radius (assuming it's the same for the left and right wheels):
+    double wheel_radius_;
+  } wheel_params_;
+
+  struct OdometryParams
+  {
+    /// Odometry related:
+    rclcpp::Time publish_period_;
+    rclcpp::Time last_state_publish_time_;
+    bool open_loop_;
+
+    bool position_feedback = true;
+    bool enable_odom_tf = true;
+    std::string base_frame_id = "base_link";
+    std::string odom_frame_id = "odom";
+    std::array<double, 6> pose_covariance_diagonal;
+    std::array<double, 6> twist_covariance_diagonal;
+  } odom_params_;
+  /// Odometry related:
+  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry> > odom_pub_ = nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<tf::tfMessage> > tf_odom_pub_ = nullptr;
+  Odometry odometry_;
+
+  // Timeout to consider cmd_vel commands old
+  double cmd_vel_timeout_;
+
+  bool subscriber_is_active_ = false;
+  rclcpp::Subscription<Twist>::SharedPtr velocity_command_subscriber_ = nullptr;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr
+    velocity_command_unstamped_subscriber_ = nullptr;
+
+  realtime_tools::RealtimeBox<std::shared_ptr<Twist>> received_velocity_msg_ptr_{nullptr};
+
+  bool publish_limited_velocity_ = false;
+  std::shared_ptr<rclcpp::Publisher<Twist>> limited_velocity_publisher_ = nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<Twist>> realtime_limited_velocity_publisher_ =
+    nullptr;
+
+  std::queue<Twist> previous_commands_;  // last two commands
+
+  /// Whether to allow multiple publishers on cmd_vel topic or not:
+  bool allow_multiple_cmd_vel_publishers_;
+
+  /// Frame to use for the robot base:
+  std::string base_frame_id_;
+
+  /// Frame to use for odometry and odom tf:
+  std::string odom_frame_id_;
+
+  /// Whether to publish odometry to tf or not:
+  bool enable_odom_tf_;
+
+  /// Number of steer joints:
+  size_t steer_joints_size_;
+
+  /// Speed limiters:
+  Commands last1_cmd_;
+  Commands last0_cmd_;
+  diff_drive_controller::SpeedLimiter limiter_lin_;
+  diff_drive_controller::SpeedLimiter limiter_ang_;
+
+private:
+  /**
+   * \brief Brakes the wheels, i.e. sets the velocity to 0
+   */
+  void brake();
+
+  /**
+   * \brief Velocity command callback
+   * \param command Velocity command message (twist)
+   */
+  void cmdVelCallback(const geometry_msgs::Twist& command);
+
+  /**
+   * \brief Sets odometry parameters from the URDF, i.e. the wheel radius and separation
+   * \param root_nh Root node handle
+   * \param left_wheel_name Name of the left wheel joint
+   * \param right_wheel_name Name of the right wheel joint
+   */
+  bool setOdomParamsFromUrdf(ros::NodeHandle& root_nh,
+                              const std::string rear_wheel_name,
+                              const std::string front_steer_name,
+                              bool lookup_wheel_separation_h,
+                              bool lookup_wheel_radius);
+
+  /**
+   * \brief Sets the odometry publishing fields
+   * \param root_nh Root node handle
+   * \param controller_nh Node handle inside the controller namespace
+   */
+  void setOdomPubFields(ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh);
 
 }  // namespace ros2_ackermann_cont
 
