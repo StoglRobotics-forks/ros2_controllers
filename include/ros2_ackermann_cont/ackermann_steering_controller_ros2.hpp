@@ -64,6 +64,8 @@ static constexpr size_t CMD_MY_ITFS = 2;
 class AckermannSteeringControllerRos2 : public controller_interface::ChainableControllerInterface
 {
 
+  using Twist = geometry_msgs::msg::TwistStamped;
+
 public:
   TEMPLATES__ROS2_CONTROL__VISIBILITY_PUBLIC
   AckermannSteeringControllerRos2();
@@ -99,7 +101,8 @@ public:
   // TODO(anyone): replace the state and command message types
   using ControllerReferenceMsg = geometry_msgs::msg::TwistStamped;
   //using ControllerModeSrvType = std_srvs::srv::SetBool;
-  using ControllerStateMsg = nav_msgs::msg::Odometry;
+  using ControllerStateMsgOdom = nav_msgs::msg::Odometry;
+  using ControllerStateMsgTf = tf2_msgs::msg::TFMessage;
 
 protected:
   std::shared_ptr<ackermann_steering_controller_ros2::ParamListener> param_listener_;
@@ -112,10 +115,12 @@ protected:
   realtime_tools::RealtimeBuffer<std::shared_ptr<ControllerReferenceMsg>> input_ref_;
   rclcpp::Duration ref_timeout_ = rclcpp::Duration::from_seconds(0.0);  // 0ms
 
-  using ControllerStatePublisher = realtime_tools::RealtimePublisher<ControllerStateMsg>;
-
-  rclcpp::Publisher<ControllerStateMsg>::SharedPtr s_publisher_;
-  std::unique_ptr<ControllerStatePublisher> state_publisher_;
+  using ControllerStatePublisherOdom = realtime_tools::RealtimePublisher<ControllerStateMsgOdom>;
+  using ControllerStatePublisherTf = realtime_tools::RealtimePublisher<ControllerStateMsgTf>;
+  rclcpp::Publisher<ControllerStateMsgOdom>::SharedPtr odom_s_publisher_;
+  rclcpp::Publisher<ControllerStateMsgTf>::SharedPtr tf_odom_s_publisher_;
+  std::unique_ptr<ControllerStatePublisher> rt_odom_state_publisher_;
+  std::unique_ptr<ControllerStatePublisher> rt_tf_odom_state_publisher_;
 
   // override methods from ChainableControllerInterface
   std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
@@ -123,6 +128,24 @@ protected:
   bool on_set_chained_mode(bool chained_mode) override;
 
   bool use_stamped_vel_ = true;
+
+  struct WheelHandle
+  {
+    std::reference_wrapper<const hardware_interface::LoanedStateInterface> feedback;
+    std::reference_wrapper<hardware_interface::LoanedCommandInterface> velocity;
+  };
+
+  std::vector<std::string> left_wheel_names_;
+  std::vector<std::string> right_wheel_names_;
+
+  std::vector<WheelHandle> registered_rear_wheel_handles_;
+  std::vector<WheelHandle> registered_front_wheel_handles_;
+  
+  /// Odometry related:
+  rclcpp::Duration publish_period_ = rclcpp::Duration::from_nanoseconds(0);
+  bool open_loop_;
+  rclcpp::Time previous_publish_timestamp_{0};
+
 
 private:
   // callback for topic interface
@@ -144,37 +167,7 @@ private:
   Commands command_struct_;
   ros::Subscriber sub_command_;
 
-  struct WheelParams
-  {
-    /// Wheel separation, wrt the midpoint of the wheel width:
-    double wheel_separation_h_;
-    /// Wheel radius (assuming it's the same for the left and right wheels):
-    double wheel_radius_;
-    /// Wheel separation and radius calibration multipliers:
-    double wheel_separation_h_multiplier_;
-    double wheel_radius_multiplier_;
-    double steer_pos_multiplier_;
-    /// Wheel radius (assuming it's the same for the left and right wheels):
-    double wheel_radius_;
-  } wheel_params_;
-
-  struct OdometryParams
-  {
-    /// Odometry related:
-    rclcpp::Time publish_period_;
-    rclcpp::Time last_state_publish_time_;
-    bool open_loop_;
-
-    bool position_feedback = true;
-    bool enable_odom_tf = true;
-    std::string base_frame_id = "base_link";
-    std::string odom_frame_id = "odom";
-    std::array<double, 6> pose_covariance_diagonal;
-    std::array<double, 6> twist_covariance_diagonal;
-  } odom_params_;
-  /// Odometry related:
-  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry> > odom_pub_ = nullptr;
-  std::shared_ptr<realtime_tools::RealtimePublisher<tf::tfMessage> > tf_odom_pub_ = nullptr;
+  // Odometry related:
   Odometry odometry_;
 
   // Timeout to consider cmd_vel commands old

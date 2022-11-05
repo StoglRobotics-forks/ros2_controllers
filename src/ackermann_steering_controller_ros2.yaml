@@ -54,9 +54,25 @@ ackermann_steering_controller_ros2:
     
   }
 
+    rear_wheel_pos: {
+    type: double,
+    default_value: 0.0,
+    description: "Name of the rear wheel.",
+    read_only: true,
+    
+  }
+
+  front_steer_pos: {
+    type: double,
+    default_value: 0.0,
+    description: "Name of the front steer wheel.",
+    read_only: true,
+    
+  }
+
   publish_rate: {
     type: double,
-    default_value: "50.0",
+    default_value: 50.0,
     description: "In Hz. Controller state will be published at this rate.",
     read_only: true,
     
@@ -64,7 +80,7 @@ ackermann_steering_controller_ros2:
 
   open_loop: {
     type: bool,
-    default_value: "false",
+    default_value: false,
     description: "bool parameter decides if open oop or not (feedback).",
     read_only: false,
     
@@ -72,39 +88,47 @@ ackermann_steering_controller_ros2:
 
   wheel_separation_h_multiplier: {
     type: double,
-    default_value: "1.0",
-    description: "Wheel separation height will be multiplied by value of the wheel_separation_h_multiplier_.",
+    default_value: 1.0,
+    description: "Wheel separation height will be multiplied by value of the wheel_separation_h_multiplier.",
+    read_only: false,
+    
+  }
+
+  wheel_radius: {
+    type: double,
+    default_value: 0.0,
+    description: "Wheel radius.",
     read_only: false,
     
   }
 
   wheel_radius_multiplier: {
     type: double,
-    default_value: "1.0",
-    description: "Wheel radius will be multiplied by value of wheel_radius_multiplier_.",
+    default_value: 1.0,
+    description: "Wheel radius will be multiplied by value of wheel_radius_multiplier.",
     read_only: false,
     
   }
 
   steer_pos_multiplier: {
     type: double,
-    default_value: "1.0",
-    description: "Steer pos will be multiplied by value of steer_pos_multiplier_.",
+    default_value: 1.0,
+    description: "Steer pos will be multiplied by value of steer_pos_multiplier.",
     read_only: false,
     
   }
 
   steer_pos_multiplier: {
     type: double,
-    default_value: "1.0",
-    description: "Steer pos will be multiplied by value of steer_pos_multiplier_.",
+    default_value: 1.0,
+    description: "Steer pos will be multiplied by value of steer_pos_multiplier.",
     read_only: false,
     
   }
 
   velocity_rolling_window_size: {
     type: int,
-    default_value: "10",
+    default_value: 10,
     description: "The number of velocity samples to average together to compute the odometry twist.linear.x and twist.angular.z velocities.",
     read_only: false,
     
@@ -112,7 +136,7 @@ ackermann_steering_controller_ros2:
 
   allow_multiple_cmd_vel_publishers: {
     type: bool,
-    default_value: "true",
+    default_value: true,
     description: "Allow multiple cmd_vel publishers is enabled or disabled?.",
     read_only: false,
     
@@ -121,7 +145,7 @@ ackermann_steering_controller_ros2:
   base_frame_id: {
     type: string,
     default_value: "base_link",
-    description: "Base frame_id set to value of base_frame_id_.",
+    description: "Base frame_id set to value of base_frame_id.",
     read_only: false,
     
   }
@@ -129,15 +153,32 @@ ackermann_steering_controller_ros2:
   odom_frame_id: {
     type: string,
     default_value: "odom",
-    description: "Odometry frame_id set to value of odom_frame_id_.",
+    description: "Odometry frame_id set to value of odom_frame_id.",
     read_only: false,
     
   }
 
+
   enable_odom_tf: {
     type: bool,
-    default_value: "true",
+    default_value: true,
     description: "Publishing to tf is enabled or disabled ?.",
+    read_only: false,
+    
+  }
+
+  twist_covariance_diagonal: {
+    type: double_array,
+    default_value: [0, 7, 14, 21, 28, 35],
+    description: "diagonal values of twist covariance matrix.",
+    read_only: false,
+    
+  }
+
+  pose_covariance_diagonal: {
+    type: double_array,
+    default_value: [0, 7, 14, 21, 28, 35],
+    description: "diagonal values of pose covariance matrix.",
     read_only: false,
     
   }

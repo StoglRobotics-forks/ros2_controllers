@@ -144,6 +144,8 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_init()
 
   try {
     param_listener_ = std::make_shared<ackermann_steering_controller_ros2::ParamListener>(get_node());
+    auto_declare<std::vector<double>>("pose_covariance_diagonal", std::vector<double>());
+    auto_declare<std::vector<double>>("twist_covariance_diagonal", std::vector<double>());
     // with the lifecycle node being initialized, we can declare parameters
 /*
     auto_declare<bool>("linear.x.has_velocity_limits", false);
@@ -173,6 +175,12 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_init()
     fprintf(stderr, "Exception thrown during controller's init with message: %s \n", e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
+
+  // Regardless of how we got the separation and radius, use them
+    // to set the odometry parameters
+    const double ws_h = params_.wheel_separation_h_multiplier * params_.wheel_separation_h;
+    const double wr = params_.wheel_radius_multiplier * params_.wheel_radius;
+    odometry_.setWheelParams(ws_h, wr);
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -213,10 +221,10 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_configu
 
 
   try {
-    // State publisher
-    s_publisher_ =
-      get_node()->create_publisher<ControllerStateMsg>("~/state", rclcpp::SystemDefaultsQoS());
-    state_publisher_ = std::make_unique<ControllerStatePublisher>(s_publisher_);
+    // Odom State publisher
+    odom_s_publisher_ =
+      get_node()->create_publisher<ControllerStateMsg>("~/odom_state", rclcpp::SystemDefaultsQoS());
+    rt_odom_state_publisher_ = std::make_unique<ControllerStatePublisher>(odom_s_publisher_);
   } catch (const std::exception & e) {
     fprintf(
       stderr, "Exception thrown during publisher creation at configure stage with message : %s \n",
@@ -224,11 +232,59 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_configu
     return controller_interface::CallbackReturn::ERROR;
   }
 
-  // TODO(anyone): Reserve memory in state publisher depending on the message type
-  state_publisher_->lock();
-  state_publisher_->msg_.header.frame_id = params_.rear_wheel_name;
-  state_publisher_->unlock();
+    // TODO(anyone): Reserve memory in state publisher depending on the message type
+  rt_odom_state_publisher_->lock();
+  rt_odom_state_publisher_->msg_.header.frame_id = params_.rear_wheel_name;
+  rt_odom_state_publisher_->unlock();
 
+  auto & odometry_message = rt_odom_state_publisher_->msg_;
+  odometry_message.header.frame_id = params_.odom_frame_id;
+  odometry_message.child_frame_id =  params_.base_frame_id;
+  odometry_message.pose.pose.position.z = 0;
+  // limit the publication on the topics /odom and /tf
+  publish_period_ = rclcpp::Duration::from_seconds(1.0 / params_.publish_rate);
+  previous_publish_timestamp_ = get_node()->get_clock()->now();
+
+  odometry_.init(time);
+
+  // initialize odom values zeros
+  odometry_message.twist =
+    geometry_msgs::msg::TwistWithCovariance(rosidl_runtime_cpp::MessageInitialization::ALL);
+
+  constexpr size_t NUM_DIMENSIONS = 6;
+  for (size_t index = 0; index < 6; ++index)
+  {
+    // 0, 7, 14, 21, 28, 35
+    const size_t diagonal_index = NUM_DIMENSIONS * index + index;
+    odometry_message.pose.covariance[diagonal_index] = odom_params_.pose_covariance_diagonal[index];
+    odometry_message.twist.covariance[diagonal_index] =
+      params_.twist_covariance_diagonal[index];
+  }
+
+  try {
+    // Tf State publisher
+    tf_odom_s_publisher_ =
+      get_node()->create_publisher<ControllerStateMsg>("~/tf_odom_state", rclcpp::SystemDefaultsQoS());
+    rt_tf_odom_state_publisher_ = std::make_unique<ControllerStatePublisher>(tf_odom_s_publisher_);
+  } catch (const std::exception & e) {
+    fprintf(
+      stderr, "Exception thrown during publisher creation at configure stage with message : %s \n",
+      e.what());
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+    // TODO(anyone): Reserve memory in state publisher depending on the message type
+  rt_tf_odom_state_publisher_->lock();
+  rt_tf_odom_state_publisher_->msg_.header.frame_id = params_.rear_wheel_name;
+  rt_tf_odom_state_publisher_->unlock();
+
+  // keeping track of odom and base_link transforms only
+  auto & odometry_transform_message = rt_tf_odom_state_publisher_->msg_;
+  odometry_transform_message.transforms.resize(1);
+  odometry_transform_message.transforms[0].transform.translation.z = 0.0;
+  odometry_transform_message.transforms.front().header.frame_id = params_.odom_frame_id;
+  odometry_transform_message.transforms.front().child_frame_id = params_.base_frame_id;
+    
   RCLCPP_INFO(get_node()->get_logger(), "configure successful");
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -272,7 +328,7 @@ controller_interface::InterfaceConfiguration AckermannSteeringControllerRos2::st
   state_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
 
   state_interfaces_config.names.reserve(STATE_MY_ITFS);
-  state_interfaces_config.names.push_back(params_.rear_wheel_name + "/" + HW_IF_VELOCITY);
+  state_interfaces_config.names.push_back(params_.rear_wheel_name + "/" + HW_IF_POSITION);
   state_interfaces_config.names.push_back(params_.front_steer_name + "/" + HW_IF_POSITION);
 
   return state_interfaces_config;
@@ -342,18 +398,106 @@ controller_interface::return_type AckermannSteeringControllerRos2::update_refere
     return controller_interface::return_type::OK;
   }
 
+  if (params_.open_loop)
+  {
+    odometry_.updateOpenLoop(last0_cmd_.lin, last0_cmd_.ang, time);
+  }else{
+
+      // double left_feedback_mean = 0.0;
+      // double right_feedback_mean = 0.0;
+
+      // double wheel_pos  = rear_wheel_joint_.getPosition();
+      // double steer_pos = front_steer_joint_.getPosition();
+
+      const double params_.rear_wheel_pos = registered_rear_wheel_handles_[index].feedback.get().get_value();
+      const double params_.front_steer_pos =
+        registered_front_wheel_handles_[index].feedback.get().get_value();
+
+      if (std::isnan(params_.rear_wheel_pos) || std::isnan(params_.front_steer_pos))
+        return;
+
+      // Estimate linear and angular velocity using joint information
+      params_.front_steer_pos = params_.front_steer_pos * params_.steer_pos_multiplier;
+      odometry_.update(params_.rear_wheel_pos, params_.front_steer_pos, time);
+    }
+
+    // Publish odometry message
+    if (previous_publish_timestamp_ + publish_period_ < time)
+    {
+      previous_publish_timestamp_ += publish_period_;
+      // Compute and store orientation info
+      tf2::Quaternion orientation;
+      orientation.setRPY(0.0, 0.0, odometry_.getHeading());
+
+      // Populate odom message and publish
+      if (rt_odom_state_publisher_->trylock())
+      {
+        auto & odometry_message = realtime_odometry_publisher_->msg_;
+        odometry_message.header.stamp = time;
+        odometry_message.pose.pose.position.x = odometry_.getX();
+        odometry_message.pose.pose.position.y = odometry_.getY();
+        odometry_message.pose.pose.orientation = orientation;
+        odometry_message.twist.twist.linear.x = odometry_.getLinear();
+        odometry_message.twist.twist.angular.z = odometry_.getAngular();
+        realtime_odometry_publisher_->unlockAndPublish();
+
+      }
+
+      // Publish tf /odom frame
+      if (params_.enable_odom_tf && rt_tf_odom_state_publisher_->trylock())
+      {
+        auto & transform = realtime_odometry_transform_publisher_->msg_.transforms.front();
+        transform.header.stamp = time;
+        transform.transform.translation.x = odometry_.getX();
+        transform.transform.translation.y = odometry_.getY();
+        transform.transform.rotation = orientation;
+        rt_tf_odom_state_publisher_->unlockAndPublish();
+      }
+    }
+
+    // MOVE ROBOT
+    // Retreive current velocity command and time step:
+    auto & curr_cmd = (*current_ref)->msg;
+    const double dt = (time - curr_cmd.header.stamp).toSec();
+
+    // Brake if cmd_vel has timeout:
+    if (dt > cmd_vel_timeout_)
+    {
+      curr_cmd.twist.twist.linear.x = 0.0;
+      curr_cmd.twist.twist.angular.z = 0.0;
+    }
+
+    // Limit velocities and accelerations:
+    const double cmd_dt(period.toSec());
+
+    // limiter_lin_.limit(curr_cmd.lin, last0_cmd_.lin, last1_cmd_.lin, cmd_dt);
+    // limiter_ang_.limit(curr_cmd.ang, last0_cmd_.ang, last1_cmd_.ang, cmd_dt);
+
+    last1_cmd_ = last0_cmd_;
+    last0_cmd_ = curr_cmd;
+
+    // Set Command
+    const double rear_wheel_vel = curr_cmd.twist.twist.linear.x/wheel_radius_; // omega = linear_vel / radius
+    front_wheel_pos = curr_cmd.twist.twist.angular.z
+    // rear_wheel_joint_.setCommand(rear_wheel_vel);
+    // front_steer_joint_.setCommand(front_wheel_pos);
+
+
   // TODO(anyone): depending on number of interfaces, use definitions, e.g., `CMD_MY_ITFS`,
   // instead of a loop
     // send message only if there is no timeout
   if (age_of_last_command <= ref_timeout_ || ref_timeout_ == rclcpp::Duration::from_seconds(0)) {
-    if (!std::isnan((*current_ref)->twist.linear.x)) {
-      reference_interfaces_[i] = (*current_ref)->displacements[i];
+    if (!std::isnan(rear_wheel_vel)) {
+      reference_interfaces_[0] = rear_wheel_vel;
+      reference_interfaces_[1] = front_wheel_pos;
       if (ref_timeout_ == rclcpp::Duration::from_seconds(0)){
-        (*current_ref)->displacements[i] = std::numeric_limits<double>::quiet_NaN();
+        rear_wheel_vel = std::numeric_limits<double>::quiet_NaN();
+        front_wheel_pos = std::numeric_limits<double>::quiet_NaN();
       }
     }
   } else {
-    (*current_ref)->displacements[i] = std::numeric_limits<double>::quiet_NaN();
+        rear_wheel_vel = std::numeric_limits<double>::quiet_NaN();
+        front_wheel_pos = std::numeric_limits<double>::quiet_NaN();
   }
   return controller_interface::return_type::OK;
 }
@@ -380,10 +524,16 @@ controller_interface::return_type AckermannSteeringControllerRos2::update_and_wr
     }
   }
 
-  if (state_publisher_ && state_publisher_->trylock()) {
-    state_publisher_->msg_.header.stamp = time;
-    state_publisher_->msg_.set_point = command_interfaces_[CMD_MY_ITFS].get_value();
-    state_publisher_->unlockAndPublish();
+  if (odom_state_publisher_ && odom_state_publisher_->trylock()) {
+    odom_state_publisher_->msg_.header.stamp = time;
+    odom_state_publisher_->msg_.set_point = command_interfaces_[CMD_MY_ITFS].get_value();
+    odom_state_publisher_->unlockAndPublish();
+  }
+
+  if (tf_odom_state_publisher_ && tf_odom_state_publisher_->trylock()) { 
+    tf_odom_state_publisher_->msg_.header.stamp = time;
+    tf_odom_state_publisher_->msg_.set_point = command_interfaces_[CMD_MY_ITFS].get_value();
+    tf_odom_state_publisher_->unlockAndPublish();
   }
 
   return controller_interface::return_type::OK;
