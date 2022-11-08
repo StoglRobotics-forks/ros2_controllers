@@ -41,12 +41,13 @@
  */
 
 #include <ros2_ackermann_cont/odometry.h>
+#include "ackermann_steering_controller_ros2_parameters.hpp"
 
 namespace ros2_ackermann_cont
 {
   namespace bacc = boost::accumulators;
 
-  Odometry::Odometry(size_t velocity_rolling_window_size)
+  Odometry::Odometry( )
   : timestamp_(0.0)
   , x_(0.0)
   , y_(0.0)
@@ -54,21 +55,14 @@ namespace ros2_ackermann_cont
   , linear_(0.0)
   , angular_(0.0)
   , rear_wheel_old_pos_(0.0)
-  , linear_acc_(RollingWindow::window_size = velocity_rolling_window_size)
-  , angular_acc_(RollingWindow::window_size = velocity_rolling_window_size)
+  , linear_acc_(RollingWindow::window_size = params_.velocity_rolling_window_size)
+  , angular_acc_(RollingWindow::window_size = params_.velocity_rolling_window_size)
   , integrate_fun_(std::bind(&Odometry::integrateExact, this, std::placeholders::_1, std::placeholders::_2))
   {
   }
 
   void Odometry::init(const rclcpp::Time& time)
   {
-    try {
-    param_listener_ = std::make_shared<ackermann_steering_controller_ros2::ParamListener>(get_node());
-
-    } catch (const std::exception & e) {
-    fprintf(stderr, "Exception thrown during controller's init with message: %s \n", e.what());
-    return controller_interface::CallbackReturn::ERROR;
-  }
     params_ = param_listener_->get_params();
     // Reset accumulators and timestamp:
     resetAccumulators();
@@ -92,13 +86,13 @@ namespace ros2_ackermann_cont
     /// Compute linear and angular diff:
     const double linear  = rear_wheel_est_vel;//(right_wheel_est_vel + left_wheel_est_vel) * 0.5;
     //const double angular = (right_wheel_est_vel - left_wheel_est_vel) / wheel_separation_w_;
-    const double angular = tan(front_steer_pos) * linear /params_.wheel_separation_h; 
+    const double angular = tan(front_steer_pos) * linear /params_.wheel_separation; 
 
     /// Integrate odometry:
     integrate_fun_(linear, angular);
 
     /// We cannot estimate the speed with very small time intervals:
-    const double dt = (time - timestamp_).toSec();
+    const double dt = time.seconds() - timestamp_.seconds();
     if (dt < 0.0001)
       return false; // Interval too small to integrate with
 
@@ -121,20 +115,20 @@ namespace ros2_ackermann_cont
     angular_ = angular;
 
     /// Integrate odometry:
-    const double dt = (time - timestamp_).toSec();
+    const double dt = time.seconds() - timestamp_.seconds();
     timestamp_ = time;
     integrate_fun_(linear * dt, angular * dt);
   }
 
-  void Odometry::setWheelParams(double wheel_separation_h, double wheel_radius)
+  void Odometry::setWheelParams(double wheel_separation, double wheel_radius)
   {
-    params_.wheel_separation_h = wheel_separation_h;
+    params_.wheel_separation = wheel_separation;
     params_.wheel_radius     = wheel_radius;
   }
 
   void Odometry::setVelocityRollingWindowSize(size_t velocity_rolling_window_size)
   {
-    param_.velocity_rolling_window_size = velocity_rolling_window_size;
+    params_.velocity_rolling_window_size = velocity_rolling_window_size;
 
     resetAccumulators();
   }
@@ -171,8 +165,8 @@ namespace ros2_ackermann_cont
 
   void Odometry::resetAccumulators()
   {
-    linear_acc_ = RollingMeanAcc(RollingWindow::window_size = param_.velocity_rolling_window_size);
-    angular_acc_ = RollingMeanAcc(RollingWindow::window_size = param_.velocity_rolling_window_size);
+    linear_acc_ = RollingMeanAcc(RollingWindow::window_size = params_.velocity_rolling_window_size);
+    angular_acc_ = RollingMeanAcc(RollingWindow::window_size = params_.velocity_rolling_window_size);
   }
 
 } // namespace ros2_ackermann_cont

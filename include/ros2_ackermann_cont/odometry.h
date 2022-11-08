@@ -50,10 +50,16 @@
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/rolling_mean.hpp>
 #include <boost/function.hpp>
+#include "ackermann_steering_controller_ros2_parameters.hpp"
+
 
 namespace ros2_ackermann_cont
 {
+  std::shared_ptr<ackermann_steering_controller_ros2::ParamListener> param_listener_;
+  ackermann_steering_controller_ros2::Params params_;
+
   namespace bacc = boost::accumulators;
+
 
   /**
    * \brief The Odometry class handles odometry readings
@@ -72,7 +78,7 @@ namespace ros2_ackermann_cont
      * Value will be set to zero
      * \param velocity_rolling_window_size Rolling window size used to compute the velocity mean
      */
-    Odometry(size_t velocity_rolling_window_size = 10);
+    Odometry();
 
     /**
      * \brief Initialize the odometry
@@ -144,8 +150,6 @@ namespace ros2_ackermann_cont
 
     /**
      * \brief Sets the wheel parameters: radius and separation
-     * \param wheel_separation Seperation between left and right wheels [m]
-     * \param wheel_radius     Wheel radius [m]
      */
     void setWheelParams(double wheel_reparation_h, double wheel_radius);
 
@@ -192,15 +196,10 @@ namespace ros2_ackermann_cont
     double linear_;  //   [m/s]
     double angular_; // [rad/s]
 
-    /// Wheel kinematic parameters [m]:
-    double wheel_separation_h_;
-    double wheel_radius_;
-
     /// Previous wheel position/state [rad]:
     double rear_wheel_old_pos_;
 
     /// Rolling mean accumulators for the linar and angular velocities:
-    size_t velocity_rolling_window_size_;
     RollingMeanAcc linear_acc_;
     RollingMeanAcc angular_acc_;
 

@@ -15,6 +15,11 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp_lifecycle
   realtime_tools
   std_srvs
+  tf2
+  tf2_msgs
+  nav_msgs
+  geometry_msgs
+  rcpputils
 )
 
 find_package(ament_cmake REQUIRED)
@@ -42,6 +47,7 @@ add_library(
   ackermann_steering_controller_ros2
   SHARED
   src/ackermann_steering_controller_ros2.cpp
+  src/odometry.cpp
 )
 target_include_directories(ackermann_steering_controller_ros2 PRIVATE include)
 target_link_libraries(ackermann_steering_controller_ros2 ackermann_steering_controller_ros2_parameters)
@@ -85,6 +91,13 @@ if(BUILD_TESTING)
     controller_manager
     hardware_interface
     ros2_control_test_assets
+    geometry_msgs
+    nav_msgs
+    rclcpp
+    rclcpp_lifecycle
+    realtime_tools
+    tf2
+    tf2_msgs
   )
 
   add_rostest_with_parameters_gmock(test_ackermann_steering_controller_ros2 test/test_ackermann_steering_controller_ros2.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/ackermann_steering_controller_ros2_params.yaml)

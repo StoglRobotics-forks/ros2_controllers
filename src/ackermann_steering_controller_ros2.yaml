@@ -54,21 +54,6 @@ ackermann_steering_controller_ros2:
     
   }
 
-    rear_wheel_pos: {
-    type: double,
-    default_value: 0.0,
-    description: "Name of the rear wheel.",
-    read_only: true,
-    
-  }
-
-  front_steer_pos: {
-    type: double,
-    default_value: 0.0,
-    description: "Name of the front steer wheel.",
-    read_only: true,
-    
-  }
 
   publish_rate: {
     type: double,
@@ -86,10 +71,18 @@ ackermann_steering_controller_ros2:
     
   }
 
-  wheel_separation_h_multiplier: {
+  wheel_separation_multiplier: {
     type: double,
     default_value: 1.0,
     description: "Wheel separation height will be multiplied by value of the wheel_separation_h_multiplier.",
+    read_only: false,
+    
+  }
+
+  wheel_separation: {
+    type: double,
+    default_value: 0.0,
+    description: "Wheel separation.",
     read_only: false,
     
   }
