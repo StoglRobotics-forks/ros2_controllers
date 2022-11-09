@@ -36,6 +36,7 @@
 
 
 #include "ros2_ackermann_cont/odometry.h"
+// #include "ros2_ackermann_cont/odometry.hpp"
 #include "ackermann_steering_controller_ros2_parameters.hpp"
 #include "ros2_ackermann_cont/visibility_control.h"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
@@ -158,7 +159,7 @@ namespace ros2_ackermann_cont{
     void reference_callback(const std::shared_ptr<ControllerReferenceMsg> msg);
 
     // Odometry related:
-    Odometry odometry_;
+    Odometry odometry_();
 
     /// Frame to use for the robot base:
     std::string base_frame_id_;

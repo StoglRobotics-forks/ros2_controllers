@@ -91,13 +91,6 @@ if(BUILD_TESTING)
     controller_manager
     hardware_interface
     ros2_control_test_assets
-    geometry_msgs
-    nav_msgs
-    rclcpp
-    rclcpp_lifecycle
-    realtime_tools
-    tf2
-    tf2_msgs
   )
 
   add_rostest_with_parameters_gmock(test_ackermann_steering_controller_ros2 test/test_ackermann_steering_controller_ros2.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/ackermann_steering_controller_ros2_params.yaml)

@@ -40,7 +40,8 @@
  * Author: Masaru Morita
  */
 
-#pragma once
+#ifndef DIFF_DRIVE_CONTROLLER__ODOMETRY_HPP_
+#define DIFF_DRIVE_CONTROLLER__ODOMETRY_HPP_
 
 #include "realtime_tools/realtime_buffer.h"
 #include "realtime_tools/realtime_publisher.h"
@@ -55,11 +56,10 @@
 
 namespace ros2_ackermann_cont
 {
-  std::shared_ptr<ackermann_steering_controller_ros2::ParamListener> param_listener_;
-  ackermann_steering_controller_ros2::Params params_;
 
   namespace bacc = boost::accumulators;
-
+  // using namespace ackermann_steering_controller_ros2;
+  using P = ackermann_steering_controller_ros2::Params;  
 
   /**
    * \brief The Odometry class handles odometry readings
@@ -68,7 +68,6 @@ namespace ros2_ackermann_cont
   class Odometry
   {
   public:
-
     /// Integration function, used to integrate the odometry:
     typedef boost::function<void(double, double)> IntegrationFunction;
 
@@ -77,8 +76,10 @@ namespace ros2_ackermann_cont
      * Timestamp will get the current time value
      * Value will be set to zero
      * \param velocity_rolling_window_size Rolling window size used to compute the velocity mean
+     * 
      */
-    Odometry();
+    // ackermann_steering_controller_ros2::Params params;
+    Odometry(P params);
 
     /**
      * \brief Initialize the odometry
@@ -196,10 +197,16 @@ namespace ros2_ackermann_cont
     double linear_;  //   [m/s]
     double angular_; // [rad/s]
 
+    double wheel_separation_;
+    double wheel_radius_;
+
+
     /// Previous wheel position/state [rad]:
     double rear_wheel_old_pos_;
 
+  
     /// Rolling mean accumulators for the linar and angular velocities:
+    int velocity_rolling_window_size_;
     RollingMeanAcc linear_acc_;
     RollingMeanAcc angular_acc_;
 
@@ -207,3 +214,5 @@ namespace ros2_ackermann_cont
     IntegrationFunction integrate_fun_;
   };
 }
+
+#endif 
