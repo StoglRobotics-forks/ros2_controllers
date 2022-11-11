@@ -24,20 +24,15 @@
 
 #include <cmath>
 
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics/rolling_mean.hpp>
+#include <boost/accumulators/statistics/stats.hpp>
+#include <boost/function.hpp>
 #include "rclcpp/time.hpp"
 #include "rcppmath/rolling_mean_accumulator.hpp"
-#include <boost/accumulators/accumulators.hpp>
-#include <boost/accumulators/statistics/stats.hpp>
-#include <boost/accumulators/statistics/rolling_mean.hpp>
-#include <boost/function.hpp>
-#include "ackermann_steering_controller_ros2_parameters.hpp"
-
-
 
 namespace ros2_ackermann_cont
 {
-
-    using P = ackermann_steering_controller_ros2::Params;
 class Odometry
 {
 public:
@@ -94,6 +89,6 @@ private:
   IntegrationFunction integrate_fun_;
 };
 
-}  // namespace diff_drive_controller
+}  // namespace ros2_ackermann_cont
 
 #endif  // DIFF_DRIVE_CONTROLLER__ODOMETRY_HPP_

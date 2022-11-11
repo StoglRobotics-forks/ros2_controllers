@@ -1,4 +1,4 @@
-<library path="ros2_ackermann_cont">
+<library path="ackermann_steering_controller_ros2">
   <class name="ros2_ackermann_cont/AckermannSteeringControllerRos2"
          type="ros2_ackermann_cont::AckermannSteeringControllerRos2" base_class_type="controller_interface::ChainableControllerInterface">
   <description>

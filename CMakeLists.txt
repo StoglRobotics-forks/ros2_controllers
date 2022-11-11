@@ -9,7 +9,9 @@ endif()
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   control_msgs
   controller_interface
+  geometry_msgs
   hardware_interface
+  nav_msgs
   pluginlib
   rclcpp
   rclcpp_lifecycle
@@ -17,9 +19,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   std_srvs
   tf2
   tf2_msgs
-  nav_msgs
-  geometry_msgs
-  rcpputils
+  tf2_geometry_msgs
 )
 
 find_package(ament_cmake REQUIRED)
@@ -93,14 +93,14 @@ if(BUILD_TESTING)
     ros2_control_test_assets
   )
 
-  add_rostest_with_parameters_gmock(test_ackermann_steering_controller_ros2 test/test_ackermann_steering_controller_ros2.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/ackermann_steering_controller_ros2_params.yaml)
-  target_include_directories(test_ackermann_steering_controller_ros2 PRIVATE include)
-  target_link_libraries(test_ackermann_steering_controller_ros2 ackermann_steering_controller_ros2)
-  ament_target_dependencies(
-    test_ackermann_steering_controller_ros2
-    controller_interface
-    hardware_interface
-  )
+  # add_rostest_with_parameters_gmock(test_ackermann_steering_controller_ros2 test/# # test_ackermann_steering_controller_ros2.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/ackermann_steering_controller_ros2_params.yaml)
+  # target_include_directories(test_ackermann_steering_controller_ros2 PRIVATE include)
+  # target_link_libraries(test_ackermann_steering_controller_ros2 ackermann_steering_controller_ros2)
+  #ament_target_dependencies(
+  #  test_ackermann_steering_controller_ros2
+  #  controller_interface
+  #  hardware_interface
+  #)
 
   # add_rostest_with_parameters_gmock(test_ackermann_steering_controller_ros2_preceeding test/test_ackermann_steering_controller_ros2_preceeding.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/ackermann_steering_controller_ros2_preceeding_params.yaml)
   # target_include_directories(test_ackermann_steering_controller_ros2_preceeding PRIVATE include)
