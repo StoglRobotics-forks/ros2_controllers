@@ -314,11 +314,10 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_deactiv
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
-controller_interface::return_type AckermannSteeringControllerRos2::update_reference_from_subscribers(
-  const rclcpp::Time & time, const rclcpp::Duration & /*period*/)
+controller_interface::return_type AckermannSteeringControllerRos2::update_reference_from_subscribers()
 {
   auto current_ref = input_ref_.readFromRT();
-  const auto age_of_last_command = time - (*current_ref)->header.stamp;
+  // const auto age_of_last_command = time - (*current_ref)->header.stamp;
 
   if (params_.open_loop)
   {
