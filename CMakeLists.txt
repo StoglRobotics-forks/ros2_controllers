@@ -41,7 +41,7 @@ find_package(ament_cmake REQUIRED)
 # Add ackermann_steering_controller_ros2 library related compile commands
 generate_parameter_library(ackermann_steering_controller_ros2_parameters
   src/ackermann_steering_controller_ros2.yaml
-  
+  # include/ros2_ackermann_cont/validate_ackermann_steering_controller_ros2_parameters.hpp
 )
 add_library(
   ackermann_steering_controller_ros2
@@ -102,14 +102,14 @@ if(BUILD_TESTING)
     hardware_interface
   )
 
-  add_rostest_with_parameters_gmock(test_ackermann_steering_controller_ros2_preceeding test/test_ackermann_steering_controller_ros2_preceeding.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/ackermann_steering_controller_ros2_preceeding_params.yaml)
-  target_include_directories(test_ackermann_steering_controller_ros2_preceeding PRIVATE include)
-  target_link_libraries(test_ackermann_steering_controller_ros2_preceeding ackermann_steering_controller_ros2)
-  ament_target_dependencies(
-    test_ackermann_steering_controller_ros2_preceeding
-    controller_interface
-    hardware_interface
-  )
+  # add_rostest_with_parameters_gmock(test_ackermann_steering_controller_ros2_preceeding test/test_ackermann_steering_controller_ros2_preceeding.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/ackermann_steering_controller_ros2_preceeding_params.yaml)
+  # target_include_directories(test_ackermann_steering_controller_ros2_preceeding PRIVATE include)
+  # target_link_libraries(test_ackermann_steering_controller_ros2_preceeding ackermann_steering_controller_ros2)
+  # ament_target_dependencies(
+  #   test_ackermann_steering_controller_ros2_preceeding
+  #   controller_interface
+  #   hardware_interface
+  # )
 endif()
 
 ament_export_include_directories(

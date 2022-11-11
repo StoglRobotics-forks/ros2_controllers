@@ -40,8 +40,7 @@
  * Author: Masaru Morita
  */
 
-#ifndef DIFF_DRIVE_CONTROLLER__ODOMETRY_HPP_
-#define DIFF_DRIVE_CONTROLLER__ODOMETRY_HPP_
+#pragma once
 
 #include "realtime_tools/realtime_buffer.h"
 #include "realtime_tools/realtime_publisher.h"
@@ -79,7 +78,7 @@ namespace ros2_ackermann_cont
      * 
      */
     // ackermann_steering_controller_ros2::Params params;
-    Odometry(P params);
+    explicit Odometry(size_t velocity_rolling_window_size = 10);
 
     /**
      * \brief Initialize the odometry
@@ -214,5 +213,3 @@ namespace ros2_ackermann_cont
     IntegrationFunction integrate_fun_;
   };
 }
-
-#endif 

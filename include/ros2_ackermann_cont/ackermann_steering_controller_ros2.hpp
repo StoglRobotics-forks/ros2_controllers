@@ -93,7 +93,8 @@ namespace ros2_ackermann_cont{
       const rclcpp_lifecycle::State & previous_state) override;
 
     TEMPLATES__ROS2_CONTROL__VISIBILITY_PUBLIC
-    controller_interface::return_type update_reference_from_subscribers() override;
+    controller_interface::return_type update_reference_from_subscribers(
+      const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
     TEMPLATES__ROS2_CONTROL__VISIBILITY_PUBLIC
     controller_interface::return_type update_and_write_commands(
@@ -153,13 +154,13 @@ namespace ros2_ackermann_cont{
       Commands() : lin(0.0), ang(0.0), stamp(0.0) {}
     };
 
+    // Odometry related:
+    Odometry odometry_;
+
   private:
     // callback for topic interface
     TEMPLATES__ROS2_CONTROL__VISIBILITY_LOCAL
     void reference_callback(const std::shared_ptr<ControllerReferenceMsg> msg);
-
-    // Odometry related:
-    Odometry odometry_();
 
     /// Frame to use for the robot base:
     std::string base_frame_id_;

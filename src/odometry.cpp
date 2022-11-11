@@ -50,20 +50,19 @@ namespace ros2_ackermann_cont
   // using namespace ackermann_steering_controller_ros2;
   // ackermann_steering_controller_ros2::Params params;
   
-
-  Odometry::Odometry(P params)
+  Odometry::Odometry(size_t velocity_rolling_window_size)
   : timestamp_(0.0)
   , x_(0.0)
   , y_(0.0)
   , heading_(0.0)
   , linear_(0.0)
   , angular_(0.0)
-  , wheel_separation_(params.wheel_separation)
-  , wheel_radius_(params.wheel_radius)
+  , wheel_separation_(0.0)
+  , wheel_radius_(0.0)
   , rear_wheel_old_pos_(0.0)
-  , velocity_rolling_window_size_(params.velocity_rolling_window_size)
-  , linear_acc_(RollingWindow::window_size = params.velocity_rolling_window_size)
-  , angular_acc_(RollingWindow::window_size = params.velocity_rolling_window_size)
+  , velocity_rolling_window_size_(0.0)
+  , linear_acc_(RollingWindow::window_size = velocity_rolling_window_size)
+  , angular_acc_(RollingWindow::window_size = velocity_rolling_window_size)
   , integrate_fun_(std::bind(&Odometry::integrateExact, this, std::placeholders::_1, std::placeholders::_2))
 
   {

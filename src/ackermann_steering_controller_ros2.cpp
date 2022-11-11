@@ -110,12 +110,6 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_init()
     return controller_interface::CallbackReturn::ERROR;
   }
 
-  // Regardless of how we got the separation and radius, use them
-    // to set the odometry parameters
-    const double ws_h = params_.wheel_separation_multiplier * params_.wheel_separation;
-    const double wr = params_.wheel_radius_multiplier * params_.wheel_radius;
-    odometry_().setWheelParams(ws_h, wr);
-
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
@@ -124,6 +118,12 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_configu
 {
   params_ = param_listener_->get_params();
 
+  odometry_.setVelocityRollingWindowSize(params_.velocity_rolling_window_size);
+// Regardless of how we got the separation and radius, use them
+  // to set the odometry parameters
+  const double wheel_seperation = params_.wheel_separation_multiplier * params_.wheel_separation;
+  const double wheel_radius = params_.wheel_radius_multiplier * params_.wheel_radius;
+  odometry_.setWheelParams(wheel_seperation, wheel_radius);
   // if (params_.joints.size() != state_joints_.size()) {
   //   RCLCPP_FATAL(
   //     get_node()->get_logger(),
@@ -177,7 +177,7 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_configu
   previous_publish_timestamp_ = get_node()->get_clock()->now(); //issuse iitialize with zero and update it in first update1 call
   //ros2 multiple clocks-how odom is initialoied in diffdrive
 
-  // odometry_().init(time);
+  // odometry_.init(time);
 
   // initialize odom values zeros
   odometry_message.twist =
@@ -314,14 +314,15 @@ controller_interface::CallbackReturn AckermannSteeringControllerRos2::on_deactiv
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
-controller_interface::return_type AckermannSteeringControllerRos2::update_reference_from_subscribers()
+controller_interface::return_type AckermannSteeringControllerRos2::update_reference_from_subscribers(
+  const rclcpp::Time & time, const rclcpp::Duration & /*period*/)
 {
   auto current_ref = input_ref_.readFromRT();
-  const auto age_of_last_command = get_node()->now() - (*current_ref)->header.stamp;
+  const auto age_of_last_command = time - (*current_ref)->header.stamp;
 
   if (params_.open_loop)
   {
-    odometry_().updateOpenLoop(last0_cmd_.lin, last0_cmd_.ang, get_node()->now());
+    odometry_.updateOpenLoop(last0_cmd_.lin, last0_cmd_.ang, time);
   }else{
 
       // double left_feedback_mean = 0.0;
@@ -341,30 +342,30 @@ controller_interface::return_type AckermannSteeringControllerRos2::update_refere
       }
 
       // Estimate linear and angular velocity using joint information
-      odometry_().update(rear_wheel_pos, front_steer_pos, get_node()->now());
+      odometry_.update(rear_wheel_pos, front_steer_pos, time);
     }
 
     // Publish odometry message
-    if (previous_publish_timestamp_ + publish_period_ < get_node()->now())
+    if (previous_publish_timestamp_ + publish_period_ < time)
     {
       previous_publish_timestamp_ += publish_period_;
       // Compute and store orientation info
       tf2::Quaternion orientation;
-      orientation.setRPY(0.0, 0.0, odometry_().getHeading());
+      orientation.setRPY(0.0, 0.0, odometry_.getHeading());
 
       // Populate odom message and publish
       if (rt_odom_state_publisher_->trylock())
       {
         auto & odometry_message = rt_odom_state_publisher_->msg_;
-        odometry_message.header.stamp = get_node()->now();
-        odometry_message.pose.pose.position.x = odometry_().getX();
-        odometry_message.pose.pose.position.y = odometry_().getY();
+        odometry_message.header.stamp = time;
+        odometry_message.pose.pose.position.x = odometry_.getX();
+        odometry_message.pose.pose.position.y = odometry_.getY();
         odometry_message.pose.pose.orientation.x = orientation.x();
         odometry_message.pose.pose.orientation.y = orientation.y();
         odometry_message.pose.pose.orientation.z = orientation.z();
         odometry_message.pose.pose.orientation.w = orientation.w();
-        odometry_message.twist.twist.linear.x = odometry_().getLinear();
-        odometry_message.twist.twist.angular.z = odometry_().getAngular();
+        odometry_message.twist.twist.linear.x = odometry_.getLinear();
+        odometry_message.twist.twist.angular.z = odometry_.getAngular();
         rt_odom_state_publisher_->unlockAndPublish();
 
       }
@@ -373,9 +374,9 @@ controller_interface::return_type AckermannSteeringControllerRos2::update_refere
       if (params_.enable_odom_tf && rt_tf_odom_state_publisher_->trylock())
       {
         auto & transform = rt_tf_odom_state_publisher_->msg_.transforms.front();
-        transform.header.stamp = get_node()->now();
-        transform.transform.translation.x = odometry_().getX();
-        transform.transform.translation.y = odometry_().getY();
+        transform.header.stamp = time;
+        transform.transform.translation.x = odometry_.getX();
+        transform.transform.translation.y = odometry_.getY();
         transform.transform.rotation.x = orientation.x();
         transform.transform.rotation.y = orientation.y();
         transform.transform.rotation.z = orientation.z();
@@ -387,7 +388,7 @@ controller_interface::return_type AckermannSteeringControllerRos2::update_refere
     // MOVE ROBOT
     // Retreive current velocity command and time step:
     auto & curr_cmd = (*current_ref);
-    const auto dt = (get_node()->now() - curr_cmd->header.stamp);
+    const auto dt = (time - curr_cmd->header.stamp);
 
     // Brake if cmd_vel has timeout:
     if (dt > ref_timeout_)
@@ -437,7 +438,7 @@ controller_interface::return_type AckermannSteeringControllerRos2::update_and_wr
   const rclcpp::Time & time, const rclcpp::Duration & /*period*/)
 {
   auto current_ref = input_ref_.readFromRT();
-  const auto age_of_last_command = get_node()->now() - (*current_ref)->header.stamp;
+  const auto age_of_last_command = time - (*current_ref)->header.stamp;
 
   // TODO(anyone): depending on number of interfaces, use definitions, e.g., `CMD_MY_ITFS`,
   // instead of a loop
