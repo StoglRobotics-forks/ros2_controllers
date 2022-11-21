@@ -237,13 +237,13 @@ public:
       eff_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
         joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_eff_[i]));
 
-      pos_state_interfaces_.emplace_back(hardware_interface::StateInterface(
+      pos_state_interfaces_.emplace_back(std::make_shared<hardware_interface::StateInterface>(
         joint_names_[i], hardware_interface::HW_IF_POSITION,
         separate_cmd_and_state_values ? &joint_state_pos_[i] : &joint_pos_[i]));
-      vel_state_interfaces_.emplace_back(hardware_interface::StateInterface(
+      vel_state_interfaces_.emplace_back(std::make_shared<hardware_interface::StateInterface>(
         joint_names_[i], hardware_interface::HW_IF_VELOCITY,
         separate_cmd_and_state_values ? &joint_state_vel_[i] : &joint_vel_[i]));
-      acc_state_interfaces_.emplace_back(hardware_interface::StateInterface(
+      acc_state_interfaces_.emplace_back(std::make_shared<hardware_interface::StateInterface>(
         joint_names_[i], hardware_interface::HW_IF_ACCELERATION,
         separate_cmd_and_state_values ? &joint_state_acc_[i] : &joint_acc_[i]));
 
@@ -437,9 +437,9 @@ public:
   std::vector<hardware_interface::CommandInterface> vel_cmd_interfaces_;
   std::vector<hardware_interface::CommandInterface> acc_cmd_interfaces_;
   std::vector<hardware_interface::CommandInterface> eff_cmd_interfaces_;
-  std::vector<hardware_interface::StateInterface> pos_state_interfaces_;
-  std::vector<hardware_interface::StateInterface> vel_state_interfaces_;
-  std::vector<hardware_interface::StateInterface> acc_state_interfaces_;
+  std::vector<std::shared_ptr<hardware_interface::StateInterface>> pos_state_interfaces_;
+  std::vector<std::shared_ptr<hardware_interface::StateInterface>> vel_state_interfaces_;
+  std::vector<std::shared_ptr<hardware_interface::StateInterface>> acc_state_interfaces_;
 };
 
 // From the tutorial: https://www.sandordargo.com/blog/2019/04/24/parameterized-testing-with-gtest
