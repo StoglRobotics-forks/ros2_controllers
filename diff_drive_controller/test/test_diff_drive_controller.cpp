@@ -163,14 +163,18 @@ protected:
   std::vector<double> position_values_ = {0.1, 0.2};
   std::vector<double> velocity_values_ = {0.01, 0.02};
 
-  hardware_interface::StateInterface left_wheel_pos_state_{
-    left_wheel_names[0], HW_IF_POSITION, &position_values_[0]};
-  hardware_interface::StateInterface right_wheel_pos_state_{
-    right_wheel_names[0], HW_IF_POSITION, &position_values_[1]};
-  hardware_interface::StateInterface left_wheel_vel_state_{
-    left_wheel_names[0], HW_IF_VELOCITY, &velocity_values_[0]};
-  hardware_interface::StateInterface right_wheel_vel_state_{
-    right_wheel_names[0], HW_IF_VELOCITY, &velocity_values_[1]};
+  std::shared_ptr<hardware_interface::StateInterface> left_wheel_pos_state_ =
+    std::make_shared<hardware_interface::StateInterface>(
+      left_wheel_names[0], HW_IF_POSITION, &position_values_[0]);
+  std::shared_ptr<hardware_interface::StateInterface> right_wheel_pos_state_ =
+    std::make_shared<hardware_interface::StateInterface>(
+      right_wheel_names[0], HW_IF_POSITION, &position_values_[1]);
+  std::shared_ptr<hardware_interface::StateInterface> left_wheel_vel_state_ =
+    std::make_shared<hardware_interface::StateInterface>(
+      left_wheel_names[0], HW_IF_VELOCITY, &velocity_values_[0]);
+  std::shared_ptr<hardware_interface::StateInterface> right_wheel_vel_state_ =
+    std::make_shared<hardware_interface::StateInterface>(
+      right_wheel_names[0], HW_IF_VELOCITY, &velocity_values_[1]);
   hardware_interface::CommandInterface left_wheel_vel_cmd_{
     left_wheel_names[0], HW_IF_VELOCITY, &velocity_values_[0]};
   hardware_interface::CommandInterface right_wheel_vel_cmd_{

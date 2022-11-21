@@ -153,11 +153,13 @@ protected:
   double position_ = 0.1;
   double velocity_ = 0.2;
 
-  hardware_interface::StateInterface steering_joint_pos_state_{
-    steering_joint_name, HW_IF_POSITION, &position_};
+  std::shared_ptr<hardware_interface::StateInterface> steering_joint_pos_state_ =
+    std::make_shared<hardware_interface::StateInterface>(
+      steering_joint_name, HW_IF_POSITION, &position_);
 
-  hardware_interface::StateInterface traction_joint_vel_state_{
-    traction_joint_name, HW_IF_VELOCITY, &velocity_};
+  std::shared_ptr<hardware_interface::StateInterface> traction_joint_vel_state_ =
+    std::make_shared<hardware_interface::StateInterface>(
+      traction_joint_name, HW_IF_VELOCITY, &velocity_);
 
   hardware_interface::CommandInterface steering_joint_pos_cmd_{
     steering_joint_name, HW_IF_POSITION, &position_};
