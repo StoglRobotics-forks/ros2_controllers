@@ -151,10 +151,10 @@ controller_interface::return_type TricycleController::update(
   double & angular_command = command.twist.angular.z;
   double Ws_read = traction_joint_[0].velocity_state.get().get_value();     // in radians/s
   double alpha_read = steering_joint_[0].position_state.get().get_value();  // in radians
-
+  //RCLCPP_INFO(get_node()->get_logger(), "data: %f %f %f", Ws_read, alpha_read, period.seconds());
   if (odom_params_.open_loop)
   {
-    odometry_.updateOpenLoop(linear_command, angular_command, period);
+    odometry_.updateOpenLoop(linear_command, angular_command, time);
   }
   else
   {
@@ -163,15 +163,23 @@ controller_interface::return_type TricycleController::update(
       RCLCPP_ERROR(get_node()->get_logger(), "Could not read feedback value");
       return controller_interface::return_type::ERROR;
     }
-    odometry_.update(Ws_read, alpha_read, period);
+    odometry_.update(Ws_read, alpha_read, time);
   }
+  //RCLCPP_INFO(get_node()->get_logger(), "odom: %f  %f", odometry_.getX(), odometry_.getY());
 
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, odometry_.getHeading());
+  // RCLCPP_INFO(get_node()->get_logger(), "Previous publish timestamp (ns) %ld", previous_publish_timestamp_.nanoseconds());
+  // RCLCPP_INFO(get_node()->get_logger(), "Publish period (ns) %ld",  publish_period_.nanoseconds());
+  // RCLCPP_INFO(get_node()->get_logger(), "Time (ns) %ld",  time.nanoseconds());
+  // RCLCPP_INFO(get_node()->get_logger(),  "");
+  // RCLCPP_INFO(get_node()->get_logger(), "%d", previous_publish_timestamp_ + publish_period_ < time);
 
-  if (previous_publish_timestamp_ + publish_period_ < time)
+  if ((previous_publish_timestamp_ + publish_period_).nanoseconds() < time.nanoseconds())
   {
-    previous_publish_timestamp_ += publish_period_;
+    // previous_publish_timestamp_ += publish_period_;
+    previous_publish_timestamp_ = rclcpp::Time(time.nanoseconds());
+    //RCLCPP_INFO(get_node()->get_logger(), "Entering Odom");
 
     if (realtime_odometry_publisher_->trylock())
     {
@@ -188,6 +196,12 @@ controller_interface::return_type TricycleController::update(
       }
       odometry_message.twist.twist.linear.x = odometry_.getLinear();
       odometry_message.twist.twist.angular.z = odometry_.getAngular();
+
+      //RCLCPP_INFO(get_node()->get_logger(), "Publishing not only twist" );
+      // RCLCPP_INFO(get_node()->get_logger(), "x: %f", odometry_message.pose.pose.position.x);
+      // RCLCPP_INFO(get_node()->get_logger(), "y: %f", odometry_message.pose.pose.position.y);
+      // RCLCPP_INFO(get_node()->get_logger(), " ");
+
       realtime_odometry_publisher_->unlockAndPublish();
     }
 
@@ -201,6 +215,7 @@ controller_interface::return_type TricycleController::update(
       transform.transform.rotation.y = orientation.y();
       transform.transform.rotation.z = orientation.z();
       transform.transform.rotation.w = orientation.w();
+      // RCLCPP_INFO(get_node()->get_logger(), "Publishing only twist" );
       realtime_odometry_transform_publisher_->unlockAndPublish();
     }
   }
@@ -407,6 +422,7 @@ CallbackReturn TricycleController::on_configure(const rclcpp_lifecycle::State & 
         received_velocity_msg_ptr_.get(twist_stamped);
         twist_stamped->twist = *msg;
         twist_stamped->header.stamp = get_node()->get_clock()->now();
+        //twist_stamped->header.stamp = time;
       });
   }
 
@@ -421,7 +437,7 @@ CallbackReturn TricycleController::on_configure(const rclcpp_lifecycle::State & 
   odometry_message.header.frame_id = odom_params_.odom_frame_id;
   odometry_message.child_frame_id = odom_params_.base_frame_id;
 
-  previous_publish_timestamp_ = get_node()->get_clock()->now();
+  previous_publish_timestamp_ = rclcpp::Time(0);
 
   // initialize odom values zeros
   odometry_message.twist =

@@ -17,7 +17,7 @@
  */
 
 #include "tricycle_controller/odometry.hpp"
-
+#include <iostream>
 namespace tricycle_controller
 {
 Odometry::Odometry(size_t velocity_rolling_window_size)
@@ -34,15 +34,26 @@ Odometry::Odometry(size_t velocity_rolling_window_size)
 {
 }
 
-bool Odometry::update(double Ws, double alpha, const rclcpp::Duration & dt)
+void Odometry::init(const rclcpp::Time & time)
+{
+  // Reset accumulators and timestamp:
+  resetAccumulators();
+  timestamp_ = time;
+}
+
+bool Odometry::update(double Ws, double alpha, const rclcpp::Time & time)
 {
   // using naming convention in http://users.isr.ist.utl.pt/~mir/cadeiras/robmovel/Kinematics.pdf
+
+  const double dt = time.seconds() - timestamp_.seconds();
+  double wheel_slippage_constant = 1.0;  //try with 1.04
+
   double Vs = Ws * wheel_radius_;
   double Vx = Vs * std::cos(alpha);
   double theta_dot = Vs * std::sin(alpha) / wheelbase_;
 
   // Integrate odometry:
-  integrateExact(Vx * dt.seconds(), theta_dot * dt.seconds());
+  integrateExact(Vx * dt, theta_dot * dt);
 
   // Estimate speeds using a rolling mean to filter them out:
   linear_accumulator_.accumulate(Vx);
@@ -51,17 +62,21 @@ bool Odometry::update(double Ws, double alpha, const rclcpp::Duration & dt)
   linear_ = linear_accumulator_.getRollingMean();
   angular_ = angular_accumulator_.getRollingMean();
 
+  std::cout << Ws << " " << alpha << " " << dt << " " << x_ << " " << y_ << std::endl;
+  //std::cout << linear_ << " " << angular_ << std::endl;
   return true;
 }
 
-void Odometry::updateOpenLoop(double linear, double angular, const rclcpp::Duration & dt)
+void Odometry::updateOpenLoop(double linear, double angular, const rclcpp::Time & time)
 {
   /// Save last linear and angular velocity:
   linear_ = linear;
   angular_ = angular;
 
   /// Integrate odometry:
-  integrateExact(linear * dt.seconds(), angular * dt.seconds());
+  const double dt = time.seconds() - timestamp_.seconds();
+  timestamp_ = time;
+  integrateExact(linear * dt, angular * dt);
 }
 
 void Odometry::resetOdometry()

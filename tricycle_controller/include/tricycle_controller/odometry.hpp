@@ -31,8 +31,9 @@ class Odometry
 public:
   explicit Odometry(size_t velocity_rolling_window_size = 10);
 
-  bool update(double left_vel, double right_vel, const rclcpp::Duration & dt);
-  void updateOpenLoop(double linear, double angular, const rclcpp::Duration & dt);
+  void init(const rclcpp::Time & time);
+  bool update(double left_vel, double right_vel, const rclcpp::Time & time);
+  void updateOpenLoop(double linear, double angular, const rclcpp::Time & time);
   void resetOdometry();
 
   double getX() const { return x_; }
@@ -63,6 +64,9 @@ private:
   // Wheel kinematic parameters [m]:
   double wheelbase_;
   double wheel_radius_;
+
+  // Current timestamp:
+  rclcpp::Time timestamp_;
 
   // Rolling mean accumulators for the linear and angular velocities:
   size_t velocity_rolling_window_size_;
