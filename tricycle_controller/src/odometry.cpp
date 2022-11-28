@@ -46,9 +46,11 @@ bool Odometry::update(double Ws, double alpha, const rclcpp::Time & time)
   // using naming convention in http://users.isr.ist.utl.pt/~mir/cadeiras/robmovel/Kinematics.pdf
 
   const double dt = time.seconds() - timestamp_.seconds();
-  double wheel_slippage_constant = 1.0;  //try with 1.04
+  timestamp_ = time;
 
-  double Vs = Ws * wheel_radius_;
+  double wheel_slippage_constant = 1.04;  //try with 1.04
+
+  double Vs = Ws * wheel_radius_ * wheel_slippage_constant;
   double Vx = Vs * std::cos(alpha);
   double theta_dot = Vs * std::sin(alpha) / wheelbase_;
 

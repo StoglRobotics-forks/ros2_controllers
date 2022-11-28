@@ -110,10 +110,12 @@ protected:
   std::tuple<double, double> twist_to_ackermann(double linear_command, double angular_command);
 
   std::string traction_joint_name_;
+  std::string second_traction_joint_name_ = "rear_right_wheel_joint_mimic";
   std::string steering_joint_name_;
 
   // HACK: put into vector to avoid initializing structs because they have no default constructors
   std::vector<TractionHandle> traction_joint_;
+  std::vector<TractionHandle> second_traction_joint_;
   std::vector<SteeringHandle> steering_joint_;
 
   struct WheelParams
