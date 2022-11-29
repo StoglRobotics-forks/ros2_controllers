@@ -62,7 +62,7 @@ bool Odometry::update(double Ws, double alpha, const rclcpp::Time & time)
   linear_ = linear_accumulator_.getRollingMean();
   angular_ = angular_accumulator_.getRollingMean();
 
-  std::cout << Ws << " " << alpha << " " << dt << " " << x_ << " " << y_ << std::endl;
+  //   std::cout << Ws << " " << alpha << " " << dt << " " << x_ << " " << y_ << std::endl;
   //std::cout << linear_ << " " << angular_ << std::endl;
   return true;
 }
