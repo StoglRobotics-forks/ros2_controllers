@@ -112,9 +112,7 @@ InterfaceConfiguration TricycleController::state_interface_configuration() const
   InterfaceConfiguration state_interfaces_config;
   state_interfaces_config.type = interface_configuration_type::INDIVIDUAL;
   state_interfaces_config.names.push_back(traction_joint_name_ + "/" + HW_IF_VELOCITY);
-  state_interfaces_config.names.push_back(second_traction_joint_name_ + "/" + HW_IF_VELOCITY);
   state_interfaces_config.names.push_back(steering_joint_name_ + "/" + HW_IF_POSITION);
-
   return state_interfaces_config;
 }
 
@@ -151,9 +149,7 @@ controller_interface::return_type TricycleController::update(
   TwistStamped command = *last_command_msg;
   double & linear_command = command.twist.linear.x;
   double & angular_command = command.twist.angular.z;
-  double Wl_read = traction_joint_[0].velocity_state.get().get_value();         // in radians/s
-  double Wr_read = second_traction_joint_[0].velocity_state.get().get_value();  // in radians/s
-  double Ws_read = (Wl_read + Wr_read) / 2.0;
+  double Ws_read = traction_joint_[0].velocity_state.get().get_value();     // in radians/s
   double alpha_read = steering_joint_[0].position_state.get().get_value();  // in radians
   //RCLCPP_INFO(get_node()->get_logger(), "data: %f %f %f", Ws_read, alpha_read, period.seconds());
   if (odom_params_.open_loop)
@@ -488,10 +484,7 @@ CallbackReturn TricycleController::on_activate(const rclcpp_lifecycle::State &)
 
   // Initialize the joints
   const auto wheel_front_result = get_traction(traction_joint_name_, traction_joint_);
-  const auto dummy = get_traction(second_traction_joint_name_, second_traction_joint_);
-
   const auto steering_result = get_steering(steering_joint_name_, steering_joint_);
-
   if (wheel_front_result == CallbackReturn::ERROR || steering_result == CallbackReturn::ERROR)
   {
     return CallbackReturn::ERROR;
