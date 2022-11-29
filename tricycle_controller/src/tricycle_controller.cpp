@@ -154,7 +154,6 @@ controller_interface::return_type TricycleController::update(
   double Wl_read = traction_joint_[0].velocity_state.get().get_value();         // in radians/s
   double Wr_read = second_traction_joint_[0].velocity_state.get().get_value();  // in radians/s
   double Ws_read = (Wl_read + Wr_read) / 2.0;
-  std::cout << Wl_read << " " << Wr_read << " " << Ws_read << std::endl;
   double alpha_read = steering_joint_[0].position_state.get().get_value();  // in radians
   //RCLCPP_INFO(get_node()->get_logger(), "data: %f %f %f", Ws_read, alpha_read, period.seconds());
   if (odom_params_.open_loop)
