@@ -119,9 +119,9 @@ TEST_F(JointGroupPositionControllerTest, CommandSuccessTest)
     controller_interface::return_type::OK);
 
   // check joint commands are still the default ones
-  ASSERT_EQ(joint_1_pos_cmd_.get_value(), 1.1);
-  ASSERT_EQ(joint_2_pos_cmd_.get_value(), 2.1);
-  ASSERT_EQ(joint_3_pos_cmd_.get_value(), 3.1);
+  ASSERT_EQ(joint_1_pos_cmd_->get_value(), 1.1);
+  ASSERT_EQ(joint_2_pos_cmd_->get_value(), 2.1);
+  ASSERT_EQ(joint_3_pos_cmd_->get_value(), 3.1);
 
   // send command
   auto command_ptr = std::make_shared<forward_command_controller::CmdType>();
@@ -134,9 +134,9 @@ TEST_F(JointGroupPositionControllerTest, CommandSuccessTest)
     controller_interface::return_type::OK);
 
   // check joint commands have been modified
-  ASSERT_EQ(joint_1_pos_cmd_.get_value(), 10.0);
-  ASSERT_EQ(joint_2_pos_cmd_.get_value(), 20.0);
-  ASSERT_EQ(joint_3_pos_cmd_.get_value(), 30.0);
+  ASSERT_EQ(joint_1_pos_cmd_->get_value(), 10.0);
+  ASSERT_EQ(joint_2_pos_cmd_->get_value(), 20.0);
+  ASSERT_EQ(joint_3_pos_cmd_->get_value(), 30.0);
 }
 
 TEST_F(JointGroupPositionControllerTest, WrongCommandCheckTest)
@@ -156,9 +156,9 @@ TEST_F(JointGroupPositionControllerTest, WrongCommandCheckTest)
     controller_interface::return_type::ERROR);
 
   // check joint commands are still the default ones
-  ASSERT_EQ(joint_1_pos_cmd_.get_value(), 1.1);
-  ASSERT_EQ(joint_2_pos_cmd_.get_value(), 2.1);
-  ASSERT_EQ(joint_3_pos_cmd_.get_value(), 3.1);
+  ASSERT_EQ(joint_1_pos_cmd_->get_value(), 1.1);
+  ASSERT_EQ(joint_2_pos_cmd_->get_value(), 2.1);
+  ASSERT_EQ(joint_3_pos_cmd_->get_value(), 3.1);
 }
 
 TEST_F(JointGroupPositionControllerTest, NoCommandCheckTest)
@@ -173,9 +173,9 @@ TEST_F(JointGroupPositionControllerTest, NoCommandCheckTest)
     controller_interface::return_type::OK);
 
   // check joint commands are still the default ones
-  ASSERT_EQ(joint_1_pos_cmd_.get_value(), 1.1);
-  ASSERT_EQ(joint_2_pos_cmd_.get_value(), 2.1);
-  ASSERT_EQ(joint_3_pos_cmd_.get_value(), 3.1);
+  ASSERT_EQ(joint_1_pos_cmd_->get_value(), 1.1);
+  ASSERT_EQ(joint_2_pos_cmd_->get_value(), 2.1);
+  ASSERT_EQ(joint_3_pos_cmd_->get_value(), 3.1);
 }
 
 TEST_F(JointGroupPositionControllerTest, CommandCallbackTest)
@@ -184,9 +184,9 @@ TEST_F(JointGroupPositionControllerTest, CommandCallbackTest)
   controller_->get_node()->set_parameter({"joints", joint_names_});
 
   // default values
-  ASSERT_EQ(joint_1_pos_cmd_.get_value(), 1.1);
-  ASSERT_EQ(joint_2_pos_cmd_.get_value(), 2.1);
-  ASSERT_EQ(joint_3_pos_cmd_.get_value(), 3.1);
+  ASSERT_EQ(joint_1_pos_cmd_->get_value(), 1.1);
+  ASSERT_EQ(joint_2_pos_cmd_->get_value(), 2.1);
+  ASSERT_EQ(joint_3_pos_cmd_->get_value(), 3.1);
 
   auto node_state = controller_->get_node()->configure();
   ASSERT_EQ(node_state.id(), lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE);
@@ -214,7 +214,7 @@ TEST_F(JointGroupPositionControllerTest, CommandCallbackTest)
     controller_interface::return_type::OK);
 
   // check command in handle was set
-  ASSERT_EQ(joint_1_pos_cmd_.get_value(), 10.0);
-  ASSERT_EQ(joint_2_pos_cmd_.get_value(), 20.0);
-  ASSERT_EQ(joint_3_pos_cmd_.get_value(), 30.0);
+  ASSERT_EQ(joint_1_pos_cmd_->get_value(), 10.0);
+  ASSERT_EQ(joint_2_pos_cmd_->get_value(), 20.0);
+  ASSERT_EQ(joint_3_pos_cmd_->get_value(), 30.0);
 }
