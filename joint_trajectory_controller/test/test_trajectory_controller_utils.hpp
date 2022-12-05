@@ -228,13 +228,13 @@ public:
     acc_state_interfaces_.reserve(joint_names_.size());
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
-      pos_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
+      pos_cmd_interfaces_.emplace_back(std::make_shared<hardware_interface::CommandInterface>(
         joint_names_[i], hardware_interface::HW_IF_POSITION, &joint_pos_[i]));
-      vel_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
+      vel_cmd_interfaces_.emplace_back(std::make_shared<hardware_interface::CommandInterface>(
         joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_vel_[i]));
-      acc_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
+      acc_cmd_interfaces_.emplace_back(std::make_shared<hardware_interface::CommandInterface>(
         joint_names_[i], hardware_interface::HW_IF_ACCELERATION, &joint_acc_[i]));
-      eff_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
+      eff_cmd_interfaces_.emplace_back(std::make_shared<hardware_interface::CommandInterface>(
         joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_eff_[i]));
 
       pos_state_interfaces_.emplace_back(std::make_shared<hardware_interface::StateInterface>(
@@ -433,10 +433,10 @@ public:
   std::vector<double> joint_state_pos_;
   std::vector<double> joint_state_vel_;
   std::vector<double> joint_state_acc_;
-  std::vector<hardware_interface::CommandInterface> pos_cmd_interfaces_;
-  std::vector<hardware_interface::CommandInterface> vel_cmd_interfaces_;
-  std::vector<hardware_interface::CommandInterface> acc_cmd_interfaces_;
-  std::vector<hardware_interface::CommandInterface> eff_cmd_interfaces_;
+  std::vector<std::shared_ptr<hardware_interface::CommandInterface>> pos_cmd_interfaces_;
+  std::vector<std::shared_ptr<hardware_interface::CommandInterface>> vel_cmd_interfaces_;
+  std::vector<std::shared_ptr<hardware_interface::CommandInterface>> acc_cmd_interfaces_;
+  std::vector<std::shared_ptr<hardware_interface::CommandInterface>> eff_cmd_interfaces_;
   std::vector<std::shared_ptr<hardware_interface::StateInterface>> pos_state_interfaces_;
   std::vector<std::shared_ptr<hardware_interface::StateInterface>> vel_state_interfaces_;
   std::vector<std::shared_ptr<hardware_interface::StateInterface>> acc_state_interfaces_;
