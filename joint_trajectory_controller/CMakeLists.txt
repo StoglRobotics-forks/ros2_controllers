@@ -7,12 +7,14 @@ export_windows_symbols()
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   angles
+  backward_ros
   control_msgs
   control_toolbox
   controller_interface
   generate_parameter_library
   hardware_interface
   joint_limits
+  nav_msgs
   pluginlib
   rclcpp
   rclcpp_action
@@ -20,6 +22,8 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   realtime_tools
   rsl
   ruckig
+  tf2
+  tf2_geometry_msgs
   trajectory_msgs
   urdf
 )
@@ -65,6 +69,24 @@ target_link_libraries(joint_trajectory_controller PUBLIC
                       ${control_msgs_TARGETS})
 
 pluginlib_export_plugin_description_file(controller_interface joint_trajectory_plugin.xml)
+
+# NOTE(rebase): cartesian_trajectory_generator subclasses JointTrajectoryController, so it's built
+# as its own shared library on top of joint_trajectory_controller rather than folded into it.
+# Uses the same modern target-based linking as joint_trajectory_controller above, rather than the
+# original commit's ament_target_dependencies() (superseded by jazzy's target-based conventions).
+add_library(cartesian_trajectory_generator SHARED
+  src/cartesian_trajectory_generator.cpp
+)
+target_compile_features(cartesian_trajectory_generator PUBLIC cxx_std_17)
+target_include_directories(cartesian_trajectory_generator PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/joint_trajectory_controller>
+)
+target_link_libraries(cartesian_trajectory_generator PUBLIC
+                      joint_trajectory_controller
+                      tf2::tf2
+                      tf2_geometry_msgs::tf2_geometry_msgs
+                      ${nav_msgs_TARGETS})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gmock REQUIRED)
@@ -120,6 +142,7 @@ install(
 install(TARGETS
     joint_trajectory_controller
     joint_trajectory_controller_parameters
+    cartesian_trajectory_generator
   EXPORT export_joint_trajectory_controller
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib

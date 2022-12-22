@@ -249,7 +249,7 @@ protected:
   void sort_to_local_joint_order(
     std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory_msg) const;
   bool validate_trajectory_msg(const trajectory_msgs::msg::JointTrajectory & trajectory) const;
-  void add_new_trajectory_msg(
+  virtual void add_new_trajectory_msg(
     const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> & traj_msg);
   bool validate_trajectory_point_field(
     size_t joint_names_size, const std::vector<double> & vector_field,
@@ -287,7 +287,11 @@ protected:
     const JointTrajectoryPoint & splines_output, const JointTrajectoryPoint & ruckig_input_target,
     const JointTrajectoryPoint & ruckig_input);
 
-  void read_state_from_state_interfaces(JointTrajectoryPoint & state);
+  // NOTE(rebase): jazzy renamed this from read_state_from_hardware to
+  // read_state_from_state_interfaces (independent of this branch). Kept the rename, added
+  // virtual since CartesianTrajectoryGenerator overrides it to read from tf2/odometry feedback
+  // instead of ros2_control state interfaces.
+  virtual void read_state_from_state_interfaces(JointTrajectoryPoint & state);
 
   /** Assign values from the command interfaces as state.
    * This is only possible if command AND state interfaces exist for the same type,
@@ -302,6 +306,12 @@ protected:
     const std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Request> request,
     std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Response> response);
 
+  // NOTE(rebase): moved from private to protected (was previously duplicated with an
+  // ambiguous, now-removed 2-arg overload auto-inserted by this commit's merge) so that
+  // CartesianTrajectoryGenerator can call it directly, same as the base class does.
+  void resize_joint_trajectory_point(
+    trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size, double value = 0.0);
+
 private:
   void update_pids();
 
@@ -309,8 +319,6 @@ private:
     const std::vector<std::string> & interface_type_list, const std::string & interface_type);
 
   void init_hold_position_msg();
-  void resize_joint_trajectory_point(
-    trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size, double value = 0.0);
   void resize_joint_trajectory_point_command(
     trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size, double value = 0.0);
 
