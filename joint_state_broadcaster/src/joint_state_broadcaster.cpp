@@ -146,7 +146,7 @@ controller_interface::CallbackReturn JointStateBroadcaster::on_configure(
 
   try
   {
-    const std::string topic_name_prefix = params_.use_local_topics ? "~/" : "";
+    const std::string topic_name_prefix = params_.use_local_topics ? "~/" : "/";
 
     joint_state_publisher_ = get_node()->create_publisher<sensor_msgs::msg::JointState>(
       topic_name_prefix + "joint_states", rclcpp::SystemDefaultsQoS());
