@@ -22,9 +22,10 @@ jobs:
           effort_controllers
           force_torque_sensor_broadcaster
           forward_command_controller
+          gripper_controllers
           joint_state_broadcaster
           joint_trajectory_controller
-          gripper_controllers
+          mecanum_drive_controller
           position_controllers
           ros2_controllers
           ros2_controllers_test_nodes
@@ -52,9 +53,10 @@ jobs:
           effort_controllers
           force_torque_sensor_broadcaster
           forward_command_controller
+          gripper_controllers
           joint_state_broadcaster
           joint_trajectory_controller
-          gripper_controllers
+          mecanum_drive_controller
           position_controllers
           ros2_controllers
           ros2_controllers_test_nodes
