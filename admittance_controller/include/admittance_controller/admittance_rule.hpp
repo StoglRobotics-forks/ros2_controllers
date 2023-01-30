@@ -41,15 +41,20 @@ namespace admittance_controller
 {
 struct AdmittanceTransforms
 {
-  // transformation from force torque sensor frame to base link frame at reference joint angles
+  // transformation from force torque sensor frame to base link frame at
+  // reference joint angles
   Eigen::Isometry3d ref_base_ft_;
-  // transformation from force torque sensor frame to base link frame at reference + admittance offset joint angles
+  // transformation from force torque sensor frame to base link frame at
+  // reference + admittance offset joint angles
   Eigen::Isometry3d base_ft_;
-  // transformation from control frame to base link frame at reference + admittance offset joint angles
+  // transformation from control frame to base link frame at reference
+  // + admittance offset joint angles
   Eigen::Isometry3d base_control_;
-  // transformation from end effector frame to base link frame at reference + admittance offset joint angles
+  // transformation from end effector frame to base link frame at reference
+  // + admittance offset joint angles
   Eigen::Isometry3d base_tip_;
-  // transformation from center of gravity frame to base link frame at reference + admittance offset joint angles
+  // transformation from center of gravity frame to base link frame at
+  // reference + admittance offset joint angles
   Eigen::Isometry3d base_cog_;
   // transformation from world frame to base link frame
   Eigen::Isometry3d world_base_;
