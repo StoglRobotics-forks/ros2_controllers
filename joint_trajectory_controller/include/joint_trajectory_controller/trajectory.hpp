@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 
+#include "joint_limits/joint_limiter_interface.hpp"
 #include "joint_limits/joint_limits.hpp"
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "joint_trajectory_controller/visibility_control.h"
@@ -92,7 +93,9 @@ public:
     const interpolation_methods::InterpolationMethod interpolation_method,
     trajectory_msgs::msg::JointTrajectoryPoint & output_state,
     TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr,
-    const rclcpp::Duration & period, const std::vector<joint_limits::JointLimits> & joint_limits);
+    const rclcpp::Duration & period,
+    std::unique_ptr<joint_limits::JointLimiterInterface<joint_limits::JointLimits>> &
+      joint_limiter);
 
   /**
    * Do interpolation between 2 states given a time in between their respective timestamps

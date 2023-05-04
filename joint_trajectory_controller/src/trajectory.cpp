@@ -66,7 +66,8 @@ bool Trajectory::sample(
   const interpolation_methods::InterpolationMethod interpolation_method,
   trajectory_msgs::msg::JointTrajectoryPoint & output_state,
   TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr,
-  const rclcpp::Duration & period, const std::vector<joint_limits::JointLimits> & joint_limits)
+  const rclcpp::Duration & period,
+  std::unique_ptr<joint_limits::JointLimiterInterface<joint_limits::JointLimits>> & joint_limiter)
 {
   THROW_ON_NULLPTR(trajectory_msg_)
 
@@ -121,6 +122,12 @@ bool Trajectory::sample(
     }
     start_segment_itr = begin();  // no segments before the first
     end_segment_itr = begin();
+
+    if (joint_limiter)
+    {
+      joint_limiter->enforce(state_before_traj_msg_, output_state, period);
+    }
+    previous_state_ = output_state;
     return true;
   }
 
@@ -151,23 +158,74 @@ bool Trajectory::sample(
       }
       start_segment_itr = begin() + i;
       end_segment_itr = begin() + (i + 1);
+
+      if (joint_limiter)
+      {
+        joint_limiter->enforce(previous_state_, output_state, period);
+      }
+      previous_state_ = output_state;
       return true;
     }
   }
 
-  // whole animation has played out
-  start_segment_itr = --end();
-  end_segment_itr = end();
-  output_state = (*start_segment_itr);
+  // whole animation has played out - but still continue s interpolating and smoothing
+  auto & last_point = trajectory_msg_->points[trajectory_msg_->points.size() - 1];
+  const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
+
+  // FIXME(destogl): this is from backport - check if needed
+  //   // whole animation has played out
+  //   start_segment_itr = --end();
+  //   end_segment_itr = end();
+  //   expected_state = (*start_segment_itr);
+  //
+  //   // TODO: Add and test enforceJointLimits? Unsure if needed for end of animation
+  //   // Yes, call enforceJointLimits to handle halting in servo, which has time_from_start == 1ns
+  //   (does not enforce vel/acc limits) if(last_idx == 0) {
+  //     // Enforce limits from current state, not the trajectory's single point, because the point
+  //     from servo halting violates limits if (joint_limiter)
+  //     {
+  //       joint_limiter->enforce(
+  //         state_before_traj_msg_, expected_state, (sample_time - time_before_traj_msg_));
+  //     }
+  //   }
+
+  const size_t dim = last_point.positions.size();
+
   // the trajectories in msg may have empty velocities/accel, so resize them
-  if (output_state.velocities.empty())
+  if (last_point.velocities.empty())
   {
-    output_state.velocities.resize(output_state.positions.size(), 0.0);
+    last_point.velocities.resize(dim, 0.0);
   }
-  if (output_state.accelerations.empty())
+  if (last_point.accelerations.empty())
   {
-    output_state.accelerations.resize(output_state.positions.size(), 0.0);
+    last_point.accelerations.resize(dim, 0.0);
   }
+
+  // integrate velocities and positions because acc and vel don't have to be 0 between points
+  for (size_t dim_i = 0; dim_i < dim; ++dim_i)
+  {
+    if (last_point.accelerations[dim_i] != 0)
+    {
+      last_point.velocities[dim_i] += last_point.accelerations[dim_i] * period.seconds();
+      // remember velocity over multiple calls
+    }
+    if (last_point.velocities[dim_i] != 0)
+    {
+      last_point.positions[dim_i] += last_point.velocities[dim_i] * period.seconds();
+      // remember velocity over multiple calls
+    }
+  }
+
+  // do not do splines when trajectory has finished because the time is achieved
+  interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state)
+
+    if (joint_limiter)
+  {
+    // TODO(destogl): use here output state
+    joint_limiter->enforce(previous_state_, output_state, period);
+  }
+  previous_state_ = output_state;
+
   return true;
 }
 

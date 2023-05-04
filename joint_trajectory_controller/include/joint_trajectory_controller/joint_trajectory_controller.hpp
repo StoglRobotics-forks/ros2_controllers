@@ -28,11 +28,13 @@
 #include "control_toolbox/pid.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "joint_limits/joint_limiter_interface.hpp"
 #include "joint_limits/joint_limits.hpp"
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "joint_trajectory_controller/tolerances.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
 #include "joint_trajectory_controller/visibility_control.h"
+#include "pluginlib/class_loader.hpp"
 #include "rclcpp/duration.hpp"
 #include "rclcpp/subscription.hpp"
 #include "rclcpp/time.hpp"
@@ -166,6 +168,12 @@ protected:
   double cmd_timeout_;
   // True if holding position or repeating last trajectory point in case of success
   realtime_tools::RealtimeBuffer<bool> rt_is_holding_;
+
+  // joint limiter configuration for JTC
+  using JointLimiter = joint_limits::JointLimiterInterface<joint_limits::JointLimits>;
+  std::shared_ptr<pluginlib::ClassLoader<JointLimiter>> joint_limiter_loader_;
+  std::unique_ptr<JointLimiter> joint_limiter_;
+
   // TODO(karsten1987): eventually activate and deactivate subscriber directly when its supported
   bool subscriber_is_active_ = false;
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_command_subscriber_ =
@@ -200,8 +208,6 @@ protected:
 
   realtime_tools::RealtimeBuffer<std::vector<bool>> reset_dofs_flags_;
   rclcpp::Service<ControllerResetDofsSrvType>::SharedPtr reset_dofs_service_;
-
-  std::vector<joint_limits::JointLimits> joint_limits_;
 
   // callback for topic interface
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
