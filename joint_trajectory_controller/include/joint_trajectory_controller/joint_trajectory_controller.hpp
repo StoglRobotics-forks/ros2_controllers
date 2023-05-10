@@ -26,7 +26,7 @@
 #include "control_msgs/msg/joint_trajectory_controller_state.hpp"
 #include "control_msgs/srv/query_trajectory_state.hpp"
 #include "control_toolbox/pid.hpp"
-#include "controller_interface/controller_interface.hpp"
+#include "controller_interface/chainable_controller_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "joint_trajectory_controller/tolerances.hpp"
@@ -64,7 +64,7 @@ namespace joint_trajectory_controller
 {
 class Trajectory;
 
-class JointTrajectoryController : public controller_interface::ControllerInterface
+class JointTrajectoryController : public controller_interface::ChainableControllerInterface
 {
 public:
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
@@ -83,10 +83,6 @@ public:
    */
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
   controller_interface::InterfaceConfiguration state_interface_configuration() const override;
-
-  JOINT_TRAJECTORY_CONTROLLER_PUBLIC
-  controller_interface::return_type update(
-    const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
   controller_interface::CallbackReturn on_init() override;
@@ -115,7 +111,15 @@ public:
   controller_interface::CallbackReturn on_shutdown(
     const rclcpp_lifecycle::State & previous_state) override;
 
+  JOINT_TRAJECTORY_CONTROLLER_PUBLIC
+  controller_interface::return_type update_and_write_commands(
+    const rclcpp::Time & time, const rclcpp::Duration & period) override;
+
 protected:
+  std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
+
+  controller_interface::return_type update_reference_from_subscribers(
+    const rclcpp::Time & time, const rclcpp::Duration & period) override;
   // To reduce number of variables and to make the code shorter the interfaces are ordered in types
   // as the following constants
   const std::vector<std::string> allowed_interface_types_ = {
