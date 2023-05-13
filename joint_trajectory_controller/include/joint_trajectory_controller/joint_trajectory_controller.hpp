@@ -111,11 +111,13 @@ public:
   controller_interface::CallbackReturn on_shutdown(
     const rclcpp_lifecycle::State & previous_state) override;
 
-  JOINT_TRAJECTORY_CONTROLLER_PUBLIC
-  controller_interface::return_type update_and_write_commands(
-    const rclcpp::Time & time, const rclcpp::Duration & period) override;
-
 protected:
+  // internal reference values
+  std::vector<std::reference_wrapper<double>> position_reference_;
+  std::vector<std::reference_wrapper<double>> velocity_reference_;
+  std::vector<std::reference_wrapper<double>> acceleration_reference_;
+  std::vector<std::reference_wrapper<double>> effort_reference_;
+
   std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
 
   controller_interface::return_type update_reference_from_subscribers(
@@ -128,6 +130,24 @@ protected:
     hardware_interface::HW_IF_ACCELERATION,
     hardware_interface::HW_IF_EFFORT,
   };
+
+  template <typename M>
+  void copy_reference_interfaces_values(
+    std::vector<M> & msg_container, std::vector<std::reference_wrapper<M>> & reference_input);
+
+  /**
+   * If controller is in chained mode we create new JointTrajectory msgs
+   * from the reference interface input.
+   * If controller is NOT in chained mode we get the JointTrajectory msg
+   * from topic.
+   * 
+   * For detailed explanation on this have a look at the update_reference_from_subscribers
+   * method which normally would handle such task
+  */
+  void update_joint_trajectory_point_from_input();
+
+  controller_interface::return_type update_and_write_commands(
+    const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   // Preallocate variables used in the realtime update() function
   trajectory_msgs::msg::JointTrajectoryPoint state_current_;

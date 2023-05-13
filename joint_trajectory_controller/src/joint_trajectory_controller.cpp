@@ -43,6 +43,7 @@
 #include "rclcpp_lifecycle/state.hpp"
 #include "std_msgs/msg/header.hpp"
 
+#include "rclcpp/rclcpp.hpp"
 namespace joint_trajectory_controller
 {
 JointTrajectoryController::JointTrajectoryController()
@@ -763,17 +764,154 @@ controller_interface::CallbackReturn JointTrajectoryController::on_shutdown(
   return CallbackReturn::SUCCESS;
 }
 
-controller_interface::return_type JointTrajectoryController::update_and_write_commands(
-  const rclcpp::Time & time, const rclcpp::Duration & period)
-{
-}
-
 std::vector<hardware_interface::CommandInterface>
 JointTrajectoryController::on_export_reference_interfaces()
 {
+  // TODO(Manuel) : only for fast poc export every available command_interface
+  // as chainable
+  std::vector<hardware_interface::CommandInterface> chainable_command_interfaces;
+  const auto command_interfaces = params_.command_interfaces;
+  const auto joints = params_.joints;
+  const auto num_chainable_interfaces = joints.size() * command_interfaces.size();
+
+  RCLCPP_ERROR_STREAM(
+    rclcpp::get_logger("A"), "command_interfaces size:" << num_chainable_interfaces);
+
+  // allocate dynamic memory
+  chainable_command_interfaces.reserve(num_chainable_interfaces);
+  reference_interfaces_.resize(num_chainable_interfaces, std::numeric_limits<double>::quiet_NaN());
+
+  // assign reference interfaces
+  auto index = 0ul;
+  for (const auto & interface : command_interfaces)
+  {
+    for (const auto & joint : joints)
+    {
+      if (hardware_interface::HW_IF_POSITION == interface)
+        position_reference_.emplace_back(reference_interfaces_[index]);
+      else if (hardware_interface::HW_IF_VELOCITY == interface)
+      {
+        velocity_reference_.emplace_back(reference_interfaces_[index]);
+      }
+      else if (hardware_interface::HW_IF_ACCELERATION == interface)
+      {
+        acceleration_reference_.emplace_back(reference_interfaces_[index]);
+      }
+      else if (hardware_interface::HW_IF_EFFORT == interface)
+      {
+        effort_reference_.emplace_back(reference_interfaces_[index]);
+      }
+      const auto full_name = joint + "/" + interface;
+      chainable_command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        std::string(get_node()->get_name()), full_name, reference_interfaces_.data() + index));
+
+      ++index;
+    }
+  }
+
+  return chainable_command_interfaces;
 }
 
 controller_interface::return_type JointTrajectoryController::update_reference_from_subscribers(
+  const rclcpp::Time & time, const rclcpp::Duration & period)
+{
+  // Updating the reference interface from the subscriber doesn't make much sense for jtc in my opinion.
+  // This is due to the fact that a JointTrajecorty msg can have multiple JointTrajectoryPoint points
+  // This way we would need to have multi dimensional reference interface for each interface type:
+  // ( position, velocity ,...).
+  // E.g. msg1{[JointTrajectoryPoint 1, JointTrajectoryPoint 2, ... ,JointTrajectoryPoint n]}.
+  // - JointTrajectoryPoint 1{position 1, velocity 1}
+  // ....
+  // - JointTrajectoryPoint n{position n, velocity n}
+  // => reference interface for position would need to get passed position 1 - position n.
+  // It is easier to check in the update_and_write_commands() if we are currently in chained mode or not.
+  // if we are in chained mode then create a  JointTrajecorty msg and do calculation like in external mode.
+
+  // Code example to make the problem clear:
+  // note not working since this example would only pass contents of JointTrajectoryPoint n.
+
+  // auto external_joint_trajectory = traj_msg_external_point_ptr_.readFromRT();
+  // if (!external_joint_trajectory->get())
+  // {
+  //   // Is this correct?
+  //   return controller_interface::return_type::ERROR;
+  // }
+
+  // for (const auto point : external_joint_trajectory->get()->points)
+  // {
+  //   for (size_t i = 0; i < point.positions.size(); ++i)
+  //   {
+  //     {
+  //       position_reference_[i].get() = point.positions[i];
+  //     }
+  //     for (size_t i = 0; i < point.velocities.size(); ++i)
+  //     {
+  //       velocity_reference_[i].get() = point.velocities[i];
+  //     }
+  //     for (size_t i = 0; i < point.accelerations.size(); ++i)
+  //     {
+  //       acceleration_reference_[i].get() = point.velocities[i];
+  //     }
+  //     for (size_t i = 0; i < point.effort.size(); ++i)
+  //     {
+  //       effort_reference_[i].get() = point.velocities[i];
+  //     }
+  //   }
+  // }
+
+  return controller_interface::return_type::OK;
+}
+
+template <typename M>
+void JointTrajectoryController::copy_reference_interfaces_values(
+  std::vector<M> & msg_container, std::vector<std::reference_wrapper<M>> & reference_input)
+{
+  msg_container.resize(reference_input.size());
+  std::transform(
+    reference_input.begin(), reference_input.end(), msg_container.begin(),
+    [](const std::reference_wrapper<double> & ref) { return ref.get(); });
+}
+
+void JointTrajectoryController::update_joint_trajectory_point_from_input()
+{
+  auto current_external_msg = traj_external_point_ptr_->get_trajectory_msg();
+  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> new_trajecotry_msg;
+  if (is_in_chained_mode())
+  {
+    // if we are in chained mode we create a trajectory msg from the reference
+    // interface input. For background on why look at the comment in the
+    // update_reference_from_subscribers(...) function
+    auto trajectory_point = trajectory_msgs::msg::JointTrajectoryPoint();
+    // file with input from reference interfaces
+    copy_reference_interfaces_values(trajectory_point.positions, position_reference_);
+    copy_reference_interfaces_values(trajectory_point.velocities, velocity_reference_);
+    copy_reference_interfaces_values(trajectory_point.accelerations, acceleration_reference_);
+    copy_reference_interfaces_values(trajectory_point.effort, effort_reference_);
+
+    auto trajectory = trajectory_msgs::msg::JointTrajectory::SharedPtr();
+    trajectory->points.push_back(trajectory_point);
+    new_trajecotry_msg = trajectory;
+  }
+  else
+  {
+    // if not in chained mode
+    // get new JointTrajectory msg from external subscription
+    new_trajecotry_msg = *(traj_msg_external_point_ptr_.readFromRT());
+  }
+  
+  // Check if a new external message has been received from nonRT threads
+  if (current_external_msg != new_trajecotry_msg)
+  {
+    fill_partial_goal(new_trajecotry_msg);
+    sort_to_local_joint_order(new_trajecotry_msg);
+    // TODO(denis): Add here integration of position and velocity
+    traj_external_point_ptr_->update(new_trajecotry_msg);
+    // set the active trajectory pointer to the new goal
+    traj_point_active_ptr_ = &traj_external_point_ptr_;
+  }
+}
+
+controller_interface::return_type JointTrajectoryController::update_and_write_commands(
   const rclcpp::Time & time, const rclcpp::Duration & period)
 {
   if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
@@ -808,18 +946,7 @@ controller_interface::return_type JointTrajectoryController::update_reference_fr
     }
   };
 
-  // Check if a new external message has been received from nonRT threads
-  auto current_external_msg = traj_external_point_ptr_->get_trajectory_msg();
-  auto new_external_msg = traj_msg_external_point_ptr_.readFromRT();
-  if (current_external_msg != *new_external_msg)
-  {
-    fill_partial_goal(*new_external_msg);
-    sort_to_local_joint_order(*new_external_msg);
-    // TODO(denis): Add here integration of position and velocity
-    traj_external_point_ptr_->update(*new_external_msg);
-    // set the active trajectory pointer to the new goal
-    traj_point_active_ptr_ = &traj_external_point_ptr_;
-  }
+  update_joint_trajectory_point_from_input();
 
   // TODO(anyone): can I here also use const on joint_interface since the reference_wrapper is not
   // changed, but its value only?
