@@ -117,6 +117,10 @@ protected:
   std::vector<std::reference_wrapper<double>> velocity_reference_;
   std::vector<std::reference_wrapper<double>> acceleration_reference_;
   std::vector<std::reference_wrapper<double>> effort_reference_;
+  std::vector<std::string> joint_names_;
+  std::vector<double> last_references_ = {};
+  bool first_time_ = true;
+  rclcpp::Time last_time_;
 
   std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
 
@@ -131,6 +135,8 @@ protected:
     hardware_interface::HW_IF_EFFORT,
   };
 
+  bool reference_changed();
+
   template <typename M>
   void copy_reference_interfaces_values(
     std::vector<M> & msg_container, std::vector<std::reference_wrapper<M>> & reference_input);
@@ -144,7 +150,7 @@ protected:
    * For detailed explanation on this have a look at the update_reference_from_subscribers
    * method which normally would handle such task
   */
-  void update_joint_trajectory_point_from_input();
+  void update_joint_trajectory_point_from_input(const rclcpp::Time & time);
 
   controller_interface::return_type update_and_write_commands(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;

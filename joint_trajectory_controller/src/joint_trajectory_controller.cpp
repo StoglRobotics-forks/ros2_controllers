@@ -774,12 +774,15 @@ JointTrajectoryController::on_export_reference_interfaces()
   const auto joints = params_.joints;
   const auto num_chainable_interfaces = joints.size() * command_interfaces.size();
 
-  RCLCPP_ERROR_STREAM(
-    rclcpp::get_logger("A"), "command_interfaces size:" << num_chainable_interfaces);
-
   // allocate dynamic memory
   chainable_command_interfaces.reserve(num_chainable_interfaces);
   reference_interfaces_.resize(num_chainable_interfaces, std::numeric_limits<double>::quiet_NaN());
+
+  position_reference_ = {};
+  velocity_reference_ = {};
+  acceleration_reference_ = {};
+  effort_reference_ = {};
+  joint_names_ = {};
 
   // assign reference interfaces
   auto index = 0ul;
@@ -787,6 +790,7 @@ JointTrajectoryController::on_export_reference_interfaces()
   {
     for (const auto & joint : joints)
     {
+      joint_names_.push_back(joint);
       if (hardware_interface::HW_IF_POSITION == interface)
         position_reference_.emplace_back(reference_interfaces_[index]);
       else if (hardware_interface::HW_IF_VELOCITY == interface)
@@ -816,7 +820,7 @@ controller_interface::return_type JointTrajectoryController::update_reference_fr
   const rclcpp::Time & time, const rclcpp::Duration & period)
 {
   // Updating the reference interface from the subscriber doesn't make much sense for jtc in my opinion.
-  // This is due to the fact that a JointTrajecorty msg can have multiple JointTrajectoryPoint points
+  // This is due to the fact that a JointTrajectory msg can have multiple JointTrajectoryPoint points
   // This way we would need to have multi dimensional reference interface for each interface type:
   // ( position, velocity ,...).
   // E.g. msg1{[JointTrajectoryPoint 1, JointTrajectoryPoint 2, ... ,JointTrajectoryPoint n]}.
@@ -825,10 +829,12 @@ controller_interface::return_type JointTrajectoryController::update_reference_fr
   // - JointTrajectoryPoint n{position n, velocity n}
   // => reference interface for position would need to get passed position 1 - position n.
   // It is easier to check in the update_and_write_commands() if we are currently in chained mode or not.
-  // if we are in chained mode then create a  JointTrajecorty msg and do calculation like in external mode.
+  // if we are in chained mode then create a  JointTrajectory msg and do calculation like in external mode.
 
-  // Code example to make the problem clear:
-  // note not working since this example would only pass contents of JointTrajectoryPoint n.
+  //******************************************************************************************************
+  // Code example to make the problem clear:                                                             *
+  // note not working since this example would only pass contents of JointTrajectoryPoint n.             *
+  //******************************************************************************************************
 
   // auto external_joint_trajectory = traj_msg_external_point_ptr_.readFromRT();
   // if (!external_joint_trajectory->get())
@@ -836,7 +842,6 @@ controller_interface::return_type JointTrajectoryController::update_reference_fr
   //   // Is this correct?
   //   return controller_interface::return_type::ERROR;
   // }
-
   // for (const auto point : external_joint_trajectory->get()->points)
   // {
   //   for (size_t i = 0; i < point.positions.size(); ++i)
@@ -872,42 +877,76 @@ void JointTrajectoryController::copy_reference_interfaces_values(
     [](const std::reference_wrapper<double> & ref) { return ref.get(); });
 }
 
-void JointTrajectoryController::update_joint_trajectory_point_from_input()
+// TODO(Manuel): just for testing should not be merged, not a good solution
+bool JointTrajectoryController::reference_changed()
 {
-  auto current_external_msg = traj_external_point_ptr_->get_trajectory_msg();
-  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> new_trajecotry_msg;
+  if (last_references_.size() != reference_interfaces_.size())
+  {
+    last_references_ = reference_interfaces_;
+    return true;
+  }
+  for (int i = 0; i < last_references_.size(); ++i)
+  {
+    if (last_references_[i] != reference_interfaces_[i])
+    {
+      last_references_ = reference_interfaces_;
+      return true;
+    }
+  }
+  return false;
+}
+
+void JointTrajectoryController::update_joint_trajectory_point_from_input(const rclcpp::Time & time)
+{
+  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> current_external_msg =
+    traj_external_point_ptr_->get_trajectory_msg();
+  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> new_trajectory_msg;
   if (is_in_chained_mode())
   {
-    // if we are in chained mode we create a trajectory msg from the reference
-    // interface input. For background on why look at the comment in the
-    // update_reference_from_subscribers(...) function
-    auto trajectory_point = trajectory_msgs::msg::JointTrajectoryPoint();
-    // file with input from reference interfaces
-    copy_reference_interfaces_values(trajectory_point.positions, position_reference_);
-    copy_reference_interfaces_values(trajectory_point.velocities, velocity_reference_);
-    copy_reference_interfaces_values(trajectory_point.accelerations, acceleration_reference_);
-    copy_reference_interfaces_values(trajectory_point.effort, effort_reference_);
+    if (reference_changed())
+    {
+      // if we are in chained mode we create a trajectory msg from the reference
+      // interface input. For background on why look at the comment in the
+      // update_reference_from_subscribers(...) function
+      auto trajectory_point = trajectory_msgs::msg::JointTrajectoryPoint();
+      auto duration = builtin_interfaces::msg::Duration();
+      duration.sec = 2;
+      trajectory_point.time_from_start = duration;
 
-    auto trajectory = trajectory_msgs::msg::JointTrajectory::SharedPtr();
-    trajectory->points.push_back(trajectory_point);
-    new_trajecotry_msg = trajectory;
+      copy_reference_interfaces_values(trajectory_point.positions, position_reference_);
+      copy_reference_interfaces_values(trajectory_point.velocities, velocity_reference_);
+      copy_reference_interfaces_values(trajectory_point.accelerations, acceleration_reference_);
+      copy_reference_interfaces_values(trajectory_point.effort, effort_reference_);
+
+      std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trajectory =
+        std::make_shared<trajectory_msgs::msg::JointTrajectory>();
+
+      trajectory->joint_names = joint_names_;
+      trajectory->points.push_back(trajectory_point);
+      new_trajectory_msg = trajectory;
+
+      fill_partial_goal(new_trajectory_msg);
+      sort_to_local_joint_order(new_trajectory_msg);
+      traj_external_point_ptr_->update(new_trajectory_msg);
+      // set the active trajectory pointer to the new goal
+      traj_point_active_ptr_ = &traj_external_point_ptr_;
+    }
   }
   else
   {
     // if not in chained mode
     // get new JointTrajectory msg from external subscription
-    new_trajecotry_msg = *(traj_msg_external_point_ptr_.readFromRT());
-  }
-  
-  // Check if a new external message has been received from nonRT threads
-  if (current_external_msg != new_trajecotry_msg)
-  {
-    fill_partial_goal(new_trajecotry_msg);
-    sort_to_local_joint_order(new_trajecotry_msg);
-    // TODO(denis): Add here integration of position and velocity
-    traj_external_point_ptr_->update(new_trajecotry_msg);
-    // set the active trajectory pointer to the new goal
-    traj_point_active_ptr_ = &traj_external_point_ptr_;
+    new_trajectory_msg = *(traj_msg_external_point_ptr_.readFromRT());
+    // Check if a new external message has been received from nonRT threads
+    if (current_external_msg != new_trajectory_msg)
+    {
+      fill_partial_goal(new_trajectory_msg);
+      sort_to_local_joint_order(new_trajectory_msg);
+      // TODO(denis): Add here integration of position and velocity
+      traj_external_point_ptr_->update(new_trajectory_msg);
+      // set the active trajectory pointer to the new goal
+      traj_point_active_ptr_ = &traj_external_point_ptr_;
+    }
   }
 }
 
@@ -946,7 +985,7 @@ controller_interface::return_type JointTrajectoryController::update_and_write_co
     }
   };
 
-  update_joint_trajectory_point_from_input();
+  update_joint_trajectory_point_from_input(time);
 
   // TODO(anyone): can I here also use const on joint_interface since the reference_wrapper is not
   // changed, but its value only?
@@ -1343,8 +1382,8 @@ void JointTrajectoryController::sort_to_local_joint_order(
   // rearrange all points in the trajectory message based on mapping
   std::vector<size_t> mapping_vector = mapping(trajectory_msg->joint_names, params_.joints);
   auto remap = [this](
-                 const std::vector<double> & to_remap,
-                 const std::vector<size_t> & mapping) -> std::vector<double>
+                 const std::vector<double> & to_remap, const std::vector<size_t> & mapping,
+                 const std::string & type) -> std::vector<double>
   {
     if (to_remap.empty())
     {
@@ -1353,7 +1392,9 @@ void JointTrajectoryController::sort_to_local_joint_order(
     if (to_remap.size() != mapping.size())
     {
       RCLCPP_WARN(
-        get_node()->get_logger(), "Invalid input size (%zu) for sorting", to_remap.size());
+        get_node()->get_logger(),
+        "Invalid input size (%zu) for sorting with mapping size (%zu) for %s", to_remap.size(),
+        mapping.size(), type.c_str());
       return to_remap;
     }
     std::vector<double> output;
@@ -1369,16 +1410,16 @@ void JointTrajectoryController::sort_to_local_joint_order(
   for (size_t index = 0; index < trajectory_msg->points.size(); ++index)
   {
     trajectory_msg->points[index].positions =
-      remap(trajectory_msg->points[index].positions, mapping_vector);
+      remap(trajectory_msg->points[index].positions, mapping_vector, "positions");
 
     trajectory_msg->points[index].velocities =
-      remap(trajectory_msg->points[index].velocities, mapping_vector);
+      remap(trajectory_msg->points[index].velocities, mapping_vector, "velocities");
 
     trajectory_msg->points[index].accelerations =
-      remap(trajectory_msg->points[index].accelerations, mapping_vector);
+      remap(trajectory_msg->points[index].accelerations, mapping_vector, "accelerations");
 
     trajectory_msg->points[index].effort =
-      remap(trajectory_msg->points[index].effort, mapping_vector);
+      remap(trajectory_msg->points[index].effort, mapping_vector, "effort");
   }
 }
 
