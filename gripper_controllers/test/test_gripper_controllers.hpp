@@ -57,9 +57,12 @@ protected:
   std::vector<double> joint_states_ = {1.1, 2.1};
   std::vector<double> joint_commands_ = {3.1};
 
-  StateInterface joint_1_pos_state_{joint_name_, HW_IF_POSITION, &joint_states_[0]};
-  StateInterface joint_1_vel_state_{joint_name_, HW_IF_VELOCITY, &joint_states_[1]};
-  CommandInterface joint_1_pos_cmd_{joint_name_, HW_IF_POSITION, &joint_commands_[0]};
+  std::shared_ptr<StateInterface> joint_1_pos_state_ =
+    std::make_shared<StateInterface>(joint_name_, HW_IF_POSITION, &joint_states_[0]);
+  std::shared_ptr<StateInterface> joint_1_vel_state_ =
+    std::make_shared<StateInterface>(joint_name_, HW_IF_VELOCITY, &joint_states_[1]);
+  std::shared_ptr<CommandInterface> joint_1_pos_cmd_ =
+    std::make_shared<CommandInterface>(joint_name_, HW_IF_POSITION, &joint_commands_[0]);
 };
 
 #endif  // TEST_GRIPPER_CONTROLLERS_HPP_
