@@ -120,7 +120,7 @@ TEST_F(AckermannSteeringControllerTest, update_success)
   ASSERT_EQ(controller_->on_activate(rclcpp_lifecycle::State()), NODE_SUCCESS);
 
   ASSERT_EQ(
-    controller_->update(rclcpp::Time(0), rclcpp::Duration::from_seconds(0.01)),
+    controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 }
 
@@ -145,7 +145,7 @@ TEST_F(AckermannSteeringControllerTest, reactivate_success)
   ASSERT_TRUE(std::isnan(controller_->command_interfaces_[0].get_value()));
 
   ASSERT_EQ(
-    controller_->update(rclcpp::Time(0), rclcpp::Duration::from_seconds(0.01)),
+    controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 }
 
@@ -168,7 +168,7 @@ TEST_F(AckermannSteeringControllerTest, test_update_logic)
   controller_->input_ref_.writeFromNonRT(msg);
 
   ASSERT_EQ(
-    controller_->update(rclcpp::Time(0), rclcpp::Duration::from_seconds(0.01)),
+    controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
   EXPECT_NEAR(
@@ -207,7 +207,7 @@ TEST_F(AckermannSteeringControllerTest, test_update_logic_chained)
   controller_->reference_interfaces_[1] = 0.2;
 
   ASSERT_EQ(
-    controller_->update(rclcpp::Time(0), rclcpp::Duration::from_seconds(0.01)),
+    controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
   EXPECT_NEAR(
 
@@ -241,7 +241,7 @@ TEST_F(AckermannSteeringControllerTest, receive_message_and_publish_updated_stat
   ASSERT_EQ(controller_->on_activate(rclcpp_lifecycle::State()), NODE_SUCCESS);
 
   ASSERT_EQ(
-    controller_->update(rclcpp::Time(0), rclcpp::Duration::from_seconds(0.01)),
+    controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
   ControllerStateMsg msg;
@@ -256,7 +256,7 @@ TEST_F(AckermannSteeringControllerTest, receive_message_and_publish_updated_stat
   ASSERT_TRUE(controller_->wait_for_commands(executor));
 
   ASSERT_EQ(
-    controller_->update(rclcpp::Time(0), rclcpp::Duration::from_seconds(0.01)),
+    controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
   EXPECT_NEAR(
