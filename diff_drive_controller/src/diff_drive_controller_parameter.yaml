@@ -2,12 +2,22 @@ diff_drive_controller:
   left_wheel_names: {
     type: string_array,
     default_value: [],
-    description: "Link names of the left side wheels",
+    description: "joint names of the left side wheels to read the state from, and write the commands to if no left_wheel_command_names provided.",
   }
   right_wheel_names: {
     type: string_array,
     default_value: [],
-    description: "Link names of the right side wheels",
+    description: "joint names of the right side wheels to read the state from, and write the commands to if no right_wheel_command_names provided.",
+  }
+  left_wheel_command_names: {
+    type: string_array,
+    default_value: [],
+    description: "joint names of the left side wheels to write the commands to. Optional but required for chaining.",
+  }
+  right_wheel_command_names: {
+    type: string_array,
+    default_value: [],
+    description: "joint names of the right side wheels to write the commands to. Optional but required for chaining.",
   }
   wheel_separation: {
     type: double,

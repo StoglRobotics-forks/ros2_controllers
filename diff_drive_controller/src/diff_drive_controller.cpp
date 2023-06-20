@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /*
- * Author: Bence Magyar, Enrique Fernández, Manuel Meraz
+ * Author: Bence Magyar, Enrique Fernández, Manuel Meraz, Guillaume Walck
  */
 
 #include <memory>
@@ -73,14 +73,37 @@ controller_interface::CallbackReturn DiffDriveController::on_init()
 InterfaceConfiguration DiffDriveController::command_interface_configuration() const
 {
   std::vector<std::string> conf_names;
-  for (const auto & joint_name : params_.left_wheel_names)
+  auto cmd_sz = params_.left_wheel_command_names.size();
+  if (cmd_sz != 0 && cmd_sz == params_.left_wheel_names.size())
   {
-    conf_names.push_back(joint_name + "/" + HW_IF_VELOCITY);
+    for (const auto & command_name : params_.left_wheel_command_names)
+    {
+      conf_names.push_back(command_name + "/" + HW_IF_VELOCITY);  // only velocity is accepted
+    }
   }
-  for (const auto & joint_name : params_.right_wheel_names)
+  else
   {
-    conf_names.push_back(joint_name + "/" + HW_IF_VELOCITY);
+    for (const auto & joint_name : params_.left_wheel_names)
+    {
+      conf_names.push_back(joint_name + "/" + HW_IF_VELOCITY);  // only velocity is accepted
+    }
   }
+
+  if (cmd_sz != 0 && cmd_sz == params_.right_wheel_names.size())
+  {
+    for (const auto & command_name : params_.right_wheel_command_names)
+    {
+      conf_names.push_back(command_name + "/" + HW_IF_VELOCITY);  // only velocity is accepted
+    }
+  }
+  else
+  {
+    for (const auto & joint_name : params_.right_wheel_names)
+    {
+      conf_names.push_back(joint_name + "/" + HW_IF_VELOCITY);  // only velocity is accepted
+    }
+  }
+
   return {interface_configuration_type::INDIVIDUAL, conf_names};
 }
 
@@ -580,8 +603,10 @@ controller_interface::CallbackReturn DiffDriveController::configure_side(
       command_interfaces_.begin(), command_interfaces_.end(),
       [&wheel_name](const auto & interface)
       {
-        return interface.get_prefix_name() == wheel_name &&
-               interface.get_interface_name() == HW_IF_VELOCITY;
+        return (interface.get_prefix_name() == wheel_name &&
+                interface.get_interface_name() == HW_IF_VELOCITY) ||
+               (interface.get_interface_name().find(wheel_name) != std::string::npos &&
+                interface.get_interface_name().find(HW_IF_VELOCITY) != std::string::npos);
       });
 
     if (command_handle == command_interfaces_.end())
