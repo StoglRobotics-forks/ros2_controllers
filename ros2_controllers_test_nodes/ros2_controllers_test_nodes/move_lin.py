@@ -73,8 +73,8 @@ class MoveLin(Node):
                 raise Exception(f'Values for goal "{name}" not set!')
 
             print(f"goal path:{goal}")
-            traj_msg = self.get_traj(goal)
-            self.trajectories.append(traj_msg)
+            self.trajectories.append(self.get_traj(goal))
+            self.trajectories.append(self.get_traj_reverted(goal))
             # float_goal = [float(value) for value in goal]
             # self.goals.append(float_goal)
 
@@ -132,6 +132,39 @@ class MoveLin(Node):
             point.velocities = point_node["velocities"]
             point.accelerations = point_node["accelerations"]
             point.effort = point_node["effort"]
+
+            point.time_from_start = Duration()
+            point.time_from_start.sec = point_node["time_from_start"]["secs"]
+            point.time_from_start.nanosec = point_node["time_from_start"]["nanosec"]
+
+            traj_msg.points.append(point)
+
+        return traj_msg
+
+    def get_traj_reverted(self, traj_path):
+        with open(traj_path) as file:
+            file_node = yaml.load(file, Loader=yaml.FullLoader)
+
+        traj_msg = JointTrajectory()
+        traj_node = file_node["trajectory"]
+
+        traj_msg.header = Header()
+        traj_msg.header.frame_id = traj_node["header"]["frame_id"]
+        traj_msg.header.stamp.sec = traj_node["header"]["stamp"]["secs"]
+        traj_msg.header.stamp.nanosec = traj_node["header"]["stamp"]["nanosec"]
+
+        for joint_name in traj_node["joint_names"]:
+            traj_msg.joint_names.append(joint_name)
+
+        for i in range(len(traj_node["points"])):
+            point_node = traj_node["points"][i]
+            point_node_revert = traj_node["points"][len(traj_node["points"]) - 1 - i]
+
+            point = JointTrajectoryPoint()
+            point.positions = point_node_revert["positions"]
+            point.velocities = point_node_revert["velocities"]
+            point.accelerations = point_node_revert["accelerations"]
+            point.effort = point_node_revert["effort"]
 
             point.time_from_start = Duration()
             point.time_from_start.sec = point_node["time_from_start"]["secs"]
