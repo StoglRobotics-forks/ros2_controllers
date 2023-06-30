@@ -35,6 +35,7 @@ class MoveLin(Node):
         self.declare_parameter("joints", [""])
         self.declare_parameter("goal_names", ["traj1", "traj2"])
         self.declare_parameter("check_starting_point", False)
+        self.declare_parameter("duplicate", False)
 
         # Read parameters
         wait_sec_between_publish = self.get_parameter("wait_sec_between_publish").value
@@ -42,6 +43,7 @@ class MoveLin(Node):
         controller_name = self.get_parameter("controller_name").value
         self.joints = self.get_parameter("joints").value
         self.check_starting_point = self.get_parameter("check_starting_point").value
+        self.duplicate = self.get_parameter("duplicate").value
         self.starting_point = {}
         self.trajectories = []
 
@@ -107,7 +109,9 @@ class MoveLin(Node):
                 'Start configuration could not be checked! Check "joint_state" topic!'
             )
         else:
-            self.get_logger().warn("Start configuration is not within configured limits!")
+            self.get_logger().warn(
+                "Start configuration is not within configured limits!"
+            )
 
     def get_traj(self, traj_path):
         with open(traj_path) as file:
@@ -121,17 +125,25 @@ class MoveLin(Node):
         traj_msg.header.stamp.sec = traj_node["header"]["stamp"]["secs"]
         traj_msg.header.stamp.nanosec = traj_node["header"]["stamp"]["nanosec"]
 
-        for joint_name in traj_node["joint_names"]:
+        for joint_name in self.joints:
             traj_msg.joint_names.append(joint_name)
 
         for i in range(len(traj_node["points"])):
             point_node = traj_node["points"][i]
 
             point = JointTrajectoryPoint()
-            point.positions = point_node["positions"]
-            point.velocities = point_node["velocities"]
-            point.accelerations = point_node["accelerations"]
-            point.effort = point_node["effort"]
+            if self.duplicate:
+                point.positions = point_node["positions"] + point_node["positions"]
+                point.velocities = point_node["velocities"] + point_node["velocities"]
+                point.accelerations = (
+                    point_node["accelerations"] + point_node["accelerations"]
+                )
+                point.effort = point_node["effort"] + point_node["effort"]
+            else:
+                point.positions = point_node["positions"]
+                point.velocities = point_node["velocities"]
+                point.accelerations = point_node["accelerations"]
+                point.effort = point_node["effort"]
 
             point.time_from_start = Duration()
             point.time_from_start.sec = point_node["time_from_start"]["secs"]
@@ -153,7 +165,7 @@ class MoveLin(Node):
         traj_msg.header.stamp.sec = traj_node["header"]["stamp"]["secs"]
         traj_msg.header.stamp.nanosec = traj_node["header"]["stamp"]["nanosec"]
 
-        for joint_name in traj_node["joint_names"]:
+        for joint_name in self.joints:
             traj_msg.joint_names.append(joint_name)
 
         for i in range(len(traj_node["points"])):
@@ -161,10 +173,23 @@ class MoveLin(Node):
             point_node_revert = traj_node["points"][len(traj_node["points"]) - 1 - i]
 
             point = JointTrajectoryPoint()
-            point.positions = point_node_revert["positions"]
-            point.velocities = point_node_revert["velocities"]
-            point.accelerations = point_node_revert["accelerations"]
-            point.effort = point_node_revert["effort"]
+            if self.duplicate:
+                point.positions = (
+                    point_node_revert["positions"] + point_node_revert["positions"]
+                )
+                point.velocities = (
+                    point_node_revert["velocities"] + point_node_revert["velocities"]
+                )
+                point.accelerations = (
+                    point_node_revert["accelerations"]
+                    + point_node_revert["accelerations"]
+                )
+                point.effort = point_node_revert["effort"] + point_node_revert["effort"]
+            else:
+                point.positions = point_node_revert["positions"]
+                point.velocities = point_node_revert["velocities"]
+                point.accelerations = point_node_revert["accelerations"]
+                point.effort = point_node_revert["effort"]
 
             point.time_from_start = Duration()
             point.time_from_start.sec = point_node["time_from_start"]["secs"]
