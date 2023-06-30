@@ -54,9 +54,12 @@ protected:
   const std::vector<std::string> joint_names_ = {"joint1", "joint2", "joint3"};
   std::vector<double> joint_commands_ = {1.1, 2.1, 3.1};
 
-  CommandInterface joint_1_cmd_{joint_names_[0], HW_IF_EFFORT, &joint_commands_[0]};
-  CommandInterface joint_2_cmd_{joint_names_[1], HW_IF_EFFORT, &joint_commands_[1]};
-  CommandInterface joint_3_cmd_{joint_names_[2], HW_IF_EFFORT, &joint_commands_[2]};
+  std::shared_ptr<CommandInterface> joint_1_cmd_ =
+    std::make_shared<CommandInterface>(joint_names_[0], HW_IF_EFFORT, &joint_commands_[0]);
+  std::shared_ptr<CommandInterface> joint_2_cmd_ =
+    std::make_shared<CommandInterface>(joint_names_[1], HW_IF_EFFORT, &joint_commands_[1]);
+  std::shared_ptr<CommandInterface> joint_3_cmd_ =
+    std::make_shared<CommandInterface>(joint_names_[2], HW_IF_EFFORT, &joint_commands_[2]);
 };
 
 #endif  // TEST_JOINT_GROUP_EFFORT_CONTROLLER_HPP_
