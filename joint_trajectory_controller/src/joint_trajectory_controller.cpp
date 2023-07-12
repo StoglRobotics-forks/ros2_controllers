@@ -153,12 +153,13 @@ controller_interface::return_type JointTrajectoryController::update(
       error.accelerations[index] = desired.accelerations[index] - current.accelerations[index];
     }
   };
-
+  
   // Check if a new external message has been received from nonRT threads
   auto current_external_msg = traj_external_point_ptr_->get_trajectory_msg();
   auto new_external_msg = traj_msg_external_point_ptr_.readFromRT();
   if (current_external_msg != *new_external_msg)
   {
+    RCLCPP_WARN(get_node()->get_logger(), "New traj");
     fill_partial_goal(*new_external_msg);
     sort_to_local_joint_order(*new_external_msg);
     // TODO(denis): Add here integration of position and velocity
@@ -178,14 +179,23 @@ controller_interface::return_type JointTrajectoryController::update(
     }
   };
 
+  RCLCPP_WARN(get_node()->get_logger(), "read from hardware");
   // current state update
   state_current_.time_from_start.set__sec(0);
+  state_current_.time_from_start.set__nanosec(0);
   read_state_from_hardware(state_current_);
+  if (has_velocity_state_interface_)
+    RCLCPP_WARN(get_node()->get_logger(), "current pos %lf, vel %lf", state_current_.positions[0],state_current_.velocities[0]);
+  else
+    RCLCPP_WARN(get_node()->get_logger(), "current pos %lf", state_current_.positions[0]);
+
 
   // currently carrying out a trajectory
   if (traj_point_active_ptr_ && (*traj_point_active_ptr_)->has_trajectory_msg())
   {
+    RCLCPP_WARN(get_node()->get_logger(), "has traj");
     bool first_sample = false;
+    TrajectoryPointConstIter start_segment_itr, end_segment_itr;
     // if sampling the first time, set the point before you sample
     if (!(*traj_point_active_ptr_)->is_sampled_already())
     {
@@ -193,6 +203,8 @@ controller_interface::return_type JointTrajectoryController::update(
       (*traj_point_active_ptr_)
         ->sample(time, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr);
       first_sample = true;
+      RCLCPP_WARN(get_node()->get_logger(), "first sample at time %f", time.seconds());
+
       if (params_.open_loop_control)
       {
         (*traj_point_active_ptr_)->set_point_before_trajectory_msg(time, last_commanded_state_);
@@ -203,20 +215,28 @@ controller_interface::return_type JointTrajectoryController::update(
       }
     }
 
-    // find segment for current timestamp
-    TrajectoryPointConstIter start_segment_itr, end_segment_itr;
+    // find segment for the next controller state (time + period)
+    RCLCPP_WARN(get_node()->get_logger(), "sampling at at time %f", (time+period).seconds());
     const bool valid_point =
       (*traj_point_active_ptr_)
         ->sample(time + period, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr);
 
     if (valid_point)
     {
+
+      if (has_velocity_state_interface_)
+        RCLCPP_WARN(get_node()->get_logger(), "after sampling desired pos %lf, vel %lf", state_desired_.positions[0],state_desired_.velocities[0]);
+      else
+        RCLCPP_WARN(get_node()->get_logger(), "after sampling desired pos %lf", state_desired_.positions[0]);
+
+
       bool tolerance_violated_while_moving = false;
       bool outside_goal_tolerance = false;
       bool within_goal_time = true;
       double time_difference = 0.0;
       const bool before_last_point = end_segment_itr != (*traj_point_active_ptr_)->end();
 
+      RCLCPP_WARN(get_node()->get_logger(), "check tolerances");
       // Check state/goal tolerance
       for (size_t index = 0; index < dof_; ++index)
       {
@@ -306,6 +326,7 @@ controller_interface::return_type JointTrajectoryController::update(
         last_commanded_state_ = state_desired_;
       }
 
+      RCLCPP_WARN(get_node()->get_logger(), "is active goal");
       const auto active_goal = *rt_active_goal_.readFromRT();
       if (active_goal)
       {
@@ -374,8 +395,15 @@ controller_interface::return_type JointTrajectoryController::update(
         RCLCPP_ERROR(get_node()->get_logger(), "Holding position due to state tolerance violation");
       }
     }
-  }
+    else
+    {
+      if (has_velocity_state_interface_)
+        RCLCPP_WARN(get_node()->get_logger(), "invalid point sampling desired pos %lf, vel %lf", state_desired_.positions[0],state_desired_.velocities[0]);
+      else
+        RCLCPP_WARN(get_node()->get_logger(), "invalid point sampling desired pos %lf", state_desired_.positions[0]);
 
+    }
+  }
   publish_state(time, state_desired_, state_current_, state_error_);
   return controller_interface::return_type::OK;
 }
@@ -1061,9 +1089,10 @@ void JointTrajectoryController::publish_state(
     {
       state_publisher_->msg_.output = command_current_;
     }
-
+    RCLCPP_WARN(get_node()->get_logger(), "managed to publish");
     state_publisher_->unlockAndPublish();
   }
+  
 }
 
 void JointTrajectoryController::topic_callback(

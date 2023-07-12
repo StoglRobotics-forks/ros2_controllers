@@ -120,6 +120,13 @@ bool Trajectory::sample(
 
   // time_from_start + trajectory time is the expected arrival time of trajectory
   const auto last_idx = trajectory_msg_->points.size() - 1;
+  const rclcpp::Time tf = trajectory_start_time_ + trajectory_msg_->points[last_idx].time_from_start;
+  if (sample_time >= tf)
+  {
+    std::cout << "TIME ABOVE LAST TIME" << std::endl;
+    return false;
+  }
+
   for (size_t i = 0; i < last_idx; ++i)
   {
     auto & point = trajectory_msg_->points[i];
@@ -153,6 +160,7 @@ bool Trajectory::sample(
   // whole animation has played out
   start_segment_itr = --end();
   end_segment_itr = end();
+  
   output_state = (*start_segment_itr);
   // the trajectories in msg may have empty velocities/accel, so resize them
   if (output_state.velocities.empty())

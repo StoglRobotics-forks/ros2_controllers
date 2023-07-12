@@ -289,13 +289,17 @@ public:
     // Needed, otherwise spin_some() returns only the oldest message in the queue
     // I do not understand why spin_some provides only one message
     qos.keep_last(1);
+    //callback_group_ =  traj_lifecycle_node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    //options.callback_group = callback_group_;
+
     state_subscriber_ = traj_lifecycle_node->create_subscription<JointTrajectoryControllerState>(
       controller_name_ + "/controller_state", qos,
       [&](std::shared_ptr<JointTrajectoryControllerState> msg)
       {
         std::lock_guard<std::mutex> guard(state_mutex_);
         state_msg_ = msg;
-      });
+      }//,options
+      );
   }
 
   /// Publish trajectory msgs with multiple points
@@ -368,20 +372,28 @@ public:
     trajectory_publisher_->publish(traj_msg);
   }
 
-  void updateController(rclcpp::Duration wait_time = rclcpp::Duration::from_seconds(0.2))
-  {
-    auto clock = rclcpp::Clock(RCL_STEADY_TIME);
-    const auto start_time = clock.now();
-    const auto end_time = start_time + wait_time;
-    auto previous_time = start_time;
+  void updateController(//rclcpp::Executor & executor,
+                        rclcpp::Duration wait_time = rclcpp::Duration::from_seconds(0.2),
+                        rclcpp::Duration dt = rclcpp::Duration::from_seconds(0.05))
 
-    while (clock.now() < end_time)
+  {
+    const auto start_time = rclcpp::Time(0);
+    auto current_time = start_time;
+    const auto end_time = start_time + wait_time;
+
+    // pass virtual time as quickly as can be processed
+    RCLCPP_WARN(
+    traj_controller_->get_node()->get_logger(),"was there"
+    );
+    while (current_time < end_time)
     {
-      auto now = clock.now();
-      traj_controller_->update(now, now - previous_time);
-      previous_time = now;
+      traj_controller_->update(current_time, dt);
+      current_time += dt;
     }
+    RCLCPP_WARN(
+    traj_controller_->get_node()->get_logger(),"was also there");
   }
+
 
   void waitAndCompareState(
     trajectory_msgs::msg::JointTrajectoryPoint expected_actual,
@@ -437,8 +449,10 @@ public:
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_publisher_;
 
   std::shared_ptr<TestableJointTrajectoryController> traj_controller_;
+  rclcpp::CallbackGroup::SharedPtr callback_group_;
   rclcpp::Subscription<control_msgs::msg::JointTrajectoryControllerState>::SharedPtr
     state_subscriber_;
+  rclcpp::SubscriptionOptions options;
   mutable std::mutex state_mutex_;
   std::shared_ptr<control_msgs::msg::JointTrajectoryControllerState> state_msg_;
 
