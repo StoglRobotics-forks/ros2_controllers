@@ -189,6 +189,9 @@ controller_interface::return_type JointTrajectoryController::update(
     // if sampling the first time, set the point before you sample
     if (!(*traj_point_active_ptr_)->is_sampled_already())
     {
+      // sample at current time to initialize start_time correctly in that trajectory
+      (*traj_point_active_ptr_)
+        ->sample(time, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr);
       first_sample = true;
       if (params_.open_loop_control)
       {
@@ -204,7 +207,7 @@ controller_interface::return_type JointTrajectoryController::update(
     TrajectoryPointConstIter start_segment_itr, end_segment_itr;
     const bool valid_point =
       (*traj_point_active_ptr_)
-        ->sample(time, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr);
+        ->sample(time + period, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr);
 
     if (valid_point)
     {
