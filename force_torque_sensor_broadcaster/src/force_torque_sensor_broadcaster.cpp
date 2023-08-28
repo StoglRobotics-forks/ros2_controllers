@@ -30,6 +30,12 @@ ForceTorqueSensorBroadcaster::ForceTorqueSensorBroadcaster()
 
 controller_interface::CallbackReturn ForceTorqueSensorBroadcaster::on_init()
 {
+  return controller_interface::CallbackReturn::SUCCESS;
+}
+
+controller_interface::CallbackReturn ForceTorqueSensorBroadcaster::on_configure(
+  const rclcpp_lifecycle::State & /*previous_state*/)
+{
   try
   {
     param_listener_ = std::make_shared<ParamListener>(get_node());
@@ -37,17 +43,9 @@ controller_interface::CallbackReturn ForceTorqueSensorBroadcaster::on_init()
   }
   catch (const std::exception & e)
   {
-    fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
+    fprintf(stderr, "Exception thrown during configure stage with message: %s \n", e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
-
-  return controller_interface::CallbackReturn::SUCCESS;
-}
-
-controller_interface::CallbackReturn ForceTorqueSensorBroadcaster::on_configure(
-  const rclcpp_lifecycle::State & /*previous_state*/)
-{
-  params_ = param_listener_->get_params();
 
   const bool no_interface_names_defined =
     params_.interface_names.force.x.empty() && params_.interface_names.force.y.empty() &&
@@ -69,12 +67,6 @@ controller_interface::CallbackReturn ForceTorqueSensorBroadcaster::on_configure(
       get_node()->get_logger(),
       "both 'sensor_name' and "
       "'interface_names.[force|torque].[x|y|z]' parameters can not be specified together.");
-    return controller_interface::CallbackReturn::ERROR;
-  }
-
-  if (params_.frame_id.empty())
-  {
-    RCLCPP_ERROR(get_node()->get_logger(), "'frame_id' parameter has to be provided.");
     return controller_interface::CallbackReturn::ERROR;
   }
 

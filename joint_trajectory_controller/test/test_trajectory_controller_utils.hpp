@@ -25,6 +25,7 @@
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "joint_trajectory_controller/joint_trajectory_controller.hpp"
+#include "joint_trajectory_controller/trajectory.hpp"
 
 namespace
 {
@@ -61,12 +62,12 @@ public:
   }
 
   /**
-  * @brief wait_for_trajectory block until a new JointTrajectory is received.
-  * Requires that the executor is not spinned elsewhere between the
-  *  message publication and the call to this function
-  *
-  * @return true if new JointTrajectory msg was received, false if timeout
-  */
+   * @brief wait_for_trajectory block until a new JointTrajectory is received.
+   * Requires that the executor is not spinned elsewhere between the
+   *  message publication and the call to this function
+   *
+   * @return true if new JointTrajectory msg was received, false if timeout
+   */
   bool wait_for_trajectory(
     rclcpp::Executor & executor,
     const std::chrono::milliseconds & timeout = std::chrono::milliseconds{500})
@@ -101,18 +102,34 @@ public:
 
   void trigger_declare_parameters() { param_listener_->declare_params(); }
 
-  trajectory_msgs::msg::JointTrajectoryPoint get_current_state_when_offset()
+  trajectory_msgs::msg::JointTrajectoryPoint get_current_state_when_offset() const
   {
     return last_commanded_state_;
   }
+  bool has_position_state_interface() const { return has_position_state_interface_; }
 
-  bool has_position_command_interface() { return has_position_command_interface_; }
+  bool has_velocity_state_interface() const { return has_velocity_state_interface_; }
 
-  bool has_velocity_command_interface() { return has_velocity_command_interface_; }
+  bool has_acceleration_state_interface() const { return has_acceleration_state_interface_; }
 
-  bool has_effort_command_interface() { return has_effort_command_interface_; }
+  bool has_position_command_interface() const { return has_position_command_interface_; }
 
-  bool use_closed_loop_pid_adapter() { return use_closed_loop_pid_adapter_; }
+  bool has_velocity_command_interface() const { return has_velocity_command_interface_; }
+
+  bool has_acceleration_command_interface() const { return has_acceleration_command_interface_; }
+
+  bool has_effort_command_interface() const { return has_effort_command_interface_; }
+
+  bool use_closed_loop_pid_adapter() const { return use_closed_loop_pid_adapter_; }
+
+  bool is_open_loop() const { return params_.open_loop_control; }
+
+  bool has_active_traj() const { return has_active_trajectory(); }
+
+  bool has_trivial_traj() const
+  {
+    return has_active_trajectory() && traj_external_point_ptr_->has_nontrivial_msg() == false;
+  }
 
   rclcpp::WaitSet joint_cmd_sub_wait_set_;
 };
@@ -215,7 +232,9 @@ public:
     ActivateTrajectoryController(separate_cmd_and_state_values);
   }
 
-  void ActivateTrajectoryController(bool separate_cmd_and_state_values = false)
+  void ActivateTrajectoryController(
+    bool separate_cmd_and_state_values = false,
+    const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS)
   {
     std::vector<hardware_interface::LoanedCommandInterface> cmd_interfaces;
     std::vector<hardware_interface::LoanedStateInterface> state_interfaces;
@@ -249,14 +268,14 @@ public:
 
       // Add to export lists and set initial values
       cmd_interfaces.emplace_back(pos_cmd_interfaces_.back());
-      cmd_interfaces.back().set_value(INITIAL_POS_JOINTS[i]);
+      cmd_interfaces.back().set_value(initial_pos_joints[i]);
       cmd_interfaces.emplace_back(vel_cmd_interfaces_.back());
       cmd_interfaces.back().set_value(INITIAL_VEL_JOINTS[i]);
       cmd_interfaces.emplace_back(acc_cmd_interfaces_.back());
       cmd_interfaces.back().set_value(INITIAL_ACC_JOINTS[i]);
       cmd_interfaces.emplace_back(eff_cmd_interfaces_.back());
       cmd_interfaces.back().set_value(INITIAL_EFF_JOINTS[i]);
-      joint_state_pos_[i] = INITIAL_POS_JOINTS[i];
+      joint_state_pos_[i] = initial_pos_joints[i];
       joint_state_vel_[i] = INITIAL_VEL_JOINTS[i];
       joint_state_acc_[i] = INITIAL_ACC_JOINTS[i];
       state_interfaces.emplace_back(pos_state_interfaces_.back());
@@ -281,7 +300,7 @@ public:
     // I do not understand why spin_some provides only one message
     qos.keep_last(1);
     state_subscriber_ = traj_lifecycle_node->create_subscription<JointTrajectoryControllerState>(
-      controller_name_ + "/state", qos,
+      controller_name_ + "/controller_state", qos,
       [&](std::shared_ptr<JointTrajectoryControllerState> msg)
       {
         std::lock_guard<std::mutex> guard(state_mutex_);
@@ -292,12 +311,14 @@ public:
   /// Publish trajectory msgs with multiple points
   /**
    *  delay_btwn_points - delay between each points
-   *  points - vector of trajectories. One point per controlled joint
-   *  joint_names - names of joints, if empty, will use joint_names_ up to the number of provided points
+   *  points_positions - vector of trajectory-positions. One point per controlled joint
+   *  joint_names - names of joints, if empty, will use joint_names_ up to the number of provided
+   * points
+   *  points - vector of trajectory-velocities. One point per controlled joint
    */
   void publish(
     const builtin_interfaces::msg::Duration & delay_btwn_points,
-    const std::vector<std::vector<double>> & points, rclcpp::Time start_time,
+    const std::vector<std::vector<double>> & points_positions, rclcpp::Time start_time,
     const std::vector<std::string> & joint_names = {},
     const std::vector<std::vector<double>> & points_velocities = {})
   {
@@ -317,14 +338,15 @@ public:
     trajectory_msgs::msg::JointTrajectory traj_msg;
     if (joint_names.empty())
     {
-      traj_msg.joint_names = {joint_names_.begin(), joint_names_.begin() + points[0].size()};
+      traj_msg.joint_names = {
+        joint_names_.begin(), joint_names_.begin() + points_positions[0].size()};
     }
     else
     {
       traj_msg.joint_names = joint_names;
     }
     traj_msg.header.stamp = start_time;
-    traj_msg.points.resize(points.size());
+    traj_msg.points.resize(points_positions.size());
 
     builtin_interfaces::msg::Duration duration_msg;
     duration_msg.sec = delay_btwn_points.sec;
@@ -332,14 +354,14 @@ public:
     rclcpp::Duration duration(duration_msg);
     rclcpp::Duration duration_total(duration_msg);
 
-    for (size_t index = 0; index < points.size(); ++index)
+    for (size_t index = 0; index < points_positions.size(); ++index)
     {
       traj_msg.points[index].time_from_start = duration_total;
 
-      traj_msg.points[index].positions.resize(points[index].size());
-      for (size_t j = 0; j < points[index].size(); ++j)
+      traj_msg.points[index].positions.resize(points_positions[index].size());
+      for (size_t j = 0; j < points_positions[index].size(); ++j)
       {
-        traj_msg.points[index].positions[j] = points[index][j];
+        traj_msg.points[index].positions[j] = points_positions[index][j];
       }
       duration_total = duration_total + duration;
     }
@@ -361,9 +383,13 @@ public:
     auto clock = rclcpp::Clock(RCL_STEADY_TIME);
     const auto start_time = clock.now();
     const auto end_time = start_time + wait_time;
+    auto previous_time = start_time;
+
     while (clock.now() < end_time)
     {
-      traj_controller_->update(clock.now(), clock.now() - start_time);
+      auto now = clock.now();
+      traj_controller_->update(now, now - previous_time);
+      previous_time = now;
     }
   }
 
@@ -385,20 +411,21 @@ public:
     for (size_t i = 0; i < expected_actual.positions.size(); ++i)
     {
       SCOPED_TRACE("Joint " + std::to_string(i));
-      // TODO(anyone): add checking for velocties and accelerations
+      // TODO(anyone): add checking for velocities and accelerations
       if (traj_controller_->has_position_command_interface())
       {
-        EXPECT_NEAR(expected_actual.positions[i], state_msg->actual.positions[i], allowed_delta);
+        EXPECT_NEAR(expected_actual.positions[i], state_msg->feedback.positions[i], allowed_delta);
       }
     }
 
     for (size_t i = 0; i < expected_desired.positions.size(); ++i)
     {
       SCOPED_TRACE("Joint " + std::to_string(i));
-      // TODO(anyone): add checking for velocties and accelerations
+      // TODO(anyone): add checking for velocities and accelerations
       if (traj_controller_->has_position_command_interface())
       {
-        EXPECT_NEAR(expected_desired.positions[i], state_msg->desired.positions[i], allowed_delta);
+        EXPECT_NEAR(
+          expected_desired.positions[i], state_msg->reference.positions[i], allowed_delta);
       }
     }
   }
@@ -407,6 +434,75 @@ public:
   {
     std::lock_guard<std::mutex> guard(state_mutex_);
     return state_msg_;
+  }
+
+  void expectHoldingPoint(std::vector<double> point)
+  {
+    // it should be holding the given point
+    // i.e., active but trivial trajectory (one point only)
+    EXPECT_TRUE(traj_controller_->has_trivial_traj());
+
+    if (traj_controller_->has_position_command_interface())
+    {
+      EXPECT_NEAR(point.at(0), joint_pos_[0], COMMON_THRESHOLD);
+      EXPECT_NEAR(point.at(1), joint_pos_[1], COMMON_THRESHOLD);
+      EXPECT_NEAR(point.at(2), joint_pos_[2], COMMON_THRESHOLD);
+    }
+
+    if (traj_controller_->has_velocity_command_interface())
+    {
+      EXPECT_EQ(0.0, joint_vel_[0]);
+      EXPECT_EQ(0.0, joint_vel_[1]);
+      EXPECT_EQ(0.0, joint_vel_[2]);
+    }
+
+    if (traj_controller_->has_acceleration_command_interface())
+    {
+      EXPECT_EQ(0.0, joint_acc_[0]);
+      EXPECT_EQ(0.0, joint_acc_[1]);
+      EXPECT_EQ(0.0, joint_acc_[2]);
+    }
+
+    if (traj_controller_->has_effort_command_interface())
+    {
+      EXPECT_EQ(0.0, joint_eff_[0]);
+      EXPECT_EQ(0.0, joint_eff_[1]);
+      EXPECT_EQ(0.0, joint_eff_[2]);
+    }
+  }
+
+  void expectHoldingPointDeactivated(std::vector<double> point)
+  {
+    // it should be holding the given point, but no active trajectory
+    EXPECT_FALSE(traj_controller_->has_active_traj());
+
+    if (traj_controller_->has_position_command_interface())
+    {
+      EXPECT_NEAR(point.at(0), joint_pos_[0], COMMON_THRESHOLD);
+      EXPECT_NEAR(point.at(1), joint_pos_[1], COMMON_THRESHOLD);
+      EXPECT_NEAR(point.at(2), joint_pos_[2], COMMON_THRESHOLD);
+    }
+
+    if (traj_controller_->has_velocity_command_interface())
+    {
+      EXPECT_EQ(0.0, joint_vel_[0]);
+      EXPECT_EQ(0.0, joint_vel_[1]);
+      EXPECT_EQ(0.0, joint_vel_[2]);
+    }
+
+    if (traj_controller_->has_acceleration_command_interface())
+    {
+      EXPECT_EQ(0.0, joint_acc_[0]);
+      EXPECT_EQ(0.0, joint_acc_[1]);
+      EXPECT_EQ(0.0, joint_acc_[2]);
+    }
+
+    if (traj_controller_->has_effort_command_interface())
+    {
+      EXPECT_EQ(0.0, joint_eff_[0]);
+      EXPECT_EQ(0.0, joint_eff_[1]);
+      EXPECT_EQ(0.0, joint_eff_[2]);
+    }
   }
 
   std::string controller_name_;

@@ -127,6 +127,7 @@ protected:
 
   // Preallocate variables used in the realtime update() function
   trajectory_msgs::msg::JointTrajectoryPoint state_current_;
+  trajectory_msgs::msg::JointTrajectoryPoint command_current_;
   trajectory_msgs::msg::JointTrajectoryPoint state_desired_;
   trajectory_msgs::msg::JointTrajectoryPoint state_error_;
 
@@ -180,7 +181,6 @@ protected:
 
   rclcpp::Service<control_msgs::srv::QueryTrajectoryState>::SharedPtr query_state_srv_;
 
-  std::shared_ptr<Trajectory> * traj_point_active_ptr_ = nullptr;
   std::shared_ptr<Trajectory> traj_external_point_ptr_ = nullptr;
   std::shared_ptr<Trajectory> traj_home_point_ptr_ = nullptr;
   std::shared_ptr<trajectory_msgs::msg::JointTrajectory> traj_msg_home_ptr_ = nullptr;
@@ -200,6 +200,7 @@ protected:
 
   rclcpp_action::Server<FollowJTrajAction>::SharedPtr action_server_;
   RealtimeGoalHandleBuffer rt_active_goal_;  ///< Currently active action goal, if any.
+  realtime_tools::RealtimeBuffer<bool> rt_has_pending_goal_;  ///< Is there a pending action goal?
   rclcpp::TimerBase::SharedPtr goal_handle_timer_;
   rclcpp::Duration action_monitor_period_ = rclcpp::Duration(50ms);
 
@@ -242,10 +243,13 @@ protected:
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
   void preempt_active_goal();
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
-  void set_hold_position();
+  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> set_hold_position();
 
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
   bool reset();
+
+  JOINT_TRAJECTORY_CONTROLLER_PUBLIC
+  bool has_active_trajectory() const;
 
   using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
@@ -256,6 +260,7 @@ protected:
   void read_state_from_hardware(JointTrajectoryPoint & state);
 
   bool read_state_from_command_interfaces(JointTrajectoryPoint & state);
+  bool read_commands_from_command_interfaces(JointTrajectoryPoint & commands);
 
   void query_state_service(
     const std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Request> request,
@@ -266,6 +271,8 @@ private:
     const std::vector<std::string> & interface_type_list, const std::string & interface_type);
 
   void resize_joint_trajectory_point(
+    trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
+  void resize_joint_trajectory_point_command(
     trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
 };
 
