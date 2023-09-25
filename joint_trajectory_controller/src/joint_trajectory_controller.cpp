@@ -182,7 +182,9 @@ controller_interface::return_type JointTrajectoryController::update(
           }
         }
 
-        traj_external_point_ptr_->set_point_before_trajectory_msg(time, last_commanded_state_);
+        if (last_commanded_time_.nanoseconds() == 0) last_commanded_time_ = time;
+        traj_external_point_ptr_->set_point_before_trajectory_msg(
+          last_commanded_time_, last_commanded_state_);
       }
       else
       {
@@ -305,6 +307,7 @@ controller_interface::return_type JointTrajectoryController::update(
 
         // store the previous command. Used in open-loop control mode
         last_commanded_state_ = state_desired_;
+        last_commanded_time_ = time;
       }
 
       if (active_goal)
