@@ -108,6 +108,7 @@ bool Trajectory::sample(
     if (interpolation_method == interpolation_methods::InterpolationMethod::NONE)
     {
       output_state = state_before_traj_msg_;
+      previous_state_ = state_before_traj_msg_;
     }
     else
     {
@@ -125,7 +126,7 @@ bool Trajectory::sample(
 
     if (joint_limiter)
     {
-      joint_limiter->enforce(state_before_traj_msg_, output_state, period);
+      joint_limiter->enforce(previous_state_, output_state, period);
     }
     previous_state_ = output_state;
     return true;
