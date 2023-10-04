@@ -24,6 +24,7 @@
 #include "control_msgs/action/follow_joint_trajectory.hpp"
 #include "control_msgs/msg/joint_trajectory_controller_state.hpp"
 #include "control_msgs/srv/query_trajectory_state.hpp"
+#include "control_msgs/srv/set_scaling_factor.hpp"
 #include "control_toolbox/pid.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -50,6 +51,14 @@ using namespace std::chrono_literals;  // NOLINT
 
 namespace joint_trajectory_controller
 {
+
+struct TimeData
+{
+  TimeData() : time(0.0), period(rclcpp::Duration::from_nanoseconds(0.0)), uptime(0.0) {}
+  rclcpp::Time time;
+  rclcpp::Duration period;
+  rclcpp::Time uptime;
+};
 
 class JointTrajectoryController : public controller_interface::ControllerInterface
 {
@@ -158,6 +167,10 @@ protected:
   std::vector<bool> joints_angle_wraparound_;
   // reserved storage for result of the command when closed loop pid adapter is used
   std::vector<double> tmp_command_;
+
+  // Things around speed scaling
+  double scaling_factor_{};
+  realtime_tools::RealtimeBuffer<TimeData> time_data_;
 
   // Timeout to consider commands old
   double cmd_timeout_;
@@ -287,6 +300,31 @@ private:
     trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
   void resize_joint_trajectory_point_command(
     trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
+
+  bool set_scaling_factor(
+    control_msgs::srv::SetScalingFactor::Request::SharedPtr req,
+    control_msgs::srv::SetScalingFactor::Response::SharedPtr resp);
+
+  realtime_tools::RealtimeBuffer<double> scaling_factor_rt_buff_;
+  rclcpp::Service<control_msgs::srv::SetScalingFactor>::SharedPtr set_scaling_factor_srv_;
+
+  /**
+   * @brief Assigns the values from a trajectory point interface to a joint interface.
+   *
+   * @tparam T The type of the joint interface.
+   * @param[out] joint_interface The reference_wrapper to assign the values to
+   * @param[in] trajectory_point_interface Containing the values to assign.
+   * @todo: Use auto in parameter declaration with c++20
+   */
+  template <typename T>
+  void assign_interface_from_point(
+    const T & joint_interface, const std::vector<double> & trajectory_point_interface)
+  {
+    for (size_t index = 0; index < dof_; ++index)
+    {
+      joint_interface[index].get().set_value(trajectory_point_interface[index]);
+    }
+  }
 };
 
 }  // namespace joint_trajectory_controller
