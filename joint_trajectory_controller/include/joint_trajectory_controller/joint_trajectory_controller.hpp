@@ -209,7 +209,14 @@ protected:
 
   using ControllerResetDofsSrvType = control_msgs::srv::ResetDofs;
 
-  realtime_tools::RealtimeBuffer<std::vector<bool>> reset_dofs_flags_;
+  struct ResetDofsData
+  {
+    bool reset;
+    double position;
+    double velocity;
+    double acceleration;
+  };
+  realtime_tools::RealtimeBuffer<std::vector<ResetDofsData>> reset_dofs_flags_;
   rclcpp::Service<ControllerResetDofsSrvType>::SharedPtr reset_dofs_service_;
 
   // callback for topic interface
