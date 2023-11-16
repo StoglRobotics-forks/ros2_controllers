@@ -97,6 +97,7 @@ bool Trajectory::sample(
 
   // TODO(anyone): this shouldn't be initialized at runtime
   output_state = trajectory_msgs::msg::JointTrajectoryPoint();
+
   auto & first_point_in_msg = trajectory_msg_->points[0];
   const rclcpp::Time first_point_timestamp =
     trajectory_start_time_ + first_point_in_msg.time_from_start;
@@ -171,7 +172,6 @@ bool Trajectory::sample(
 
   // whole animation has played out - but still continue s interpolating and smoothing
   auto & last_point = trajectory_msg_->points[trajectory_msg_->points.size() - 1];
-  const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
 
   // FIXME(destogl): this is from backport - check if needed
   //   // whole animation has played out
@@ -222,10 +222,26 @@ bool Trajectory::sample(
 
     if (joint_limiter)
   {
-    // TODO(destogl): use here output state
-    joint_limiter->enforce(previous_state_, output_state, period);
+    // When running Joint Limiter we might not get to the last_point in time - so SplineIt!
+    interpolate_between_points(
+      sample_time - period, previous_state_, sample_time, last_point, sample_time, output_state);
+
+    // if limits are enforced time of the second point is in the future
+    if (joint_limiter->enforce(previous_state_, output_state, period))
+    {
+      // TODO(destogl): spline it again to avoid oscillations in output from the filter
+      // interpolate_between_points(
+      //   sample_time-period, previous_state_, sample_time + period, output_state,
+      //   sample_time, output_state);
+    }
+    previous_state_ = output_state;
   }
-  previous_state_ = output_state;
+  else
+  {
+    const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
+    // do not do splines when trajectory has finished because the time is achieved
+    interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state);
+  }
 
   return true;
 }
@@ -239,6 +255,7 @@ void Trajectory::interpolate_between_points(
   rclcpp::Duration duration_btwn_points = time_b - time_a;
 
   const size_t dim = state_a.positions.size();
+  // TODO(anyone): this shouldn't be resized at runtime
   output.positions.resize(dim, 0.0);
   output.velocities.resize(dim, 0.0);
   output.accelerations.resize(dim, 0.0);
@@ -292,7 +309,6 @@ void Trajectory::interpolate_between_points(
     // do cubic interpolation
     double T[4];
     generate_powers(3, duration_btwn_points.seconds(), T);
-
     for (size_t i = 0; i < dim; ++i)
     {
       double start_pos = state_a.positions[i];
@@ -399,23 +415,24 @@ void Trajectory::deduce_from_derivatives(
   {
     for (size_t i = 0; i < dim; ++i)
     {
+      // reset velocities always to 0 if it is empty or NaN
+      double first_state_velocity =
+        first_state.velocities.empty() ? 0.0 : first_state.velocities[i];
+      if (std::isnan(first_state_velocity))
+      {
+        first_state.velocities[i] = 0.0;
+        first_state_velocity = 0.0;
+      }
+      double second_state_velocity =
+        second_state.velocities.empty() ? 0.0 : second_state.velocities[i];
+      if (std::isnan(second_state_velocity))
+      {
+        second_state.velocities[i] = 0.0;
+        second_state_velocity = 0.0;
+      }
+
       if (std::isnan(second_state.positions[i]))
       {
-        double first_state_velocity =
-          first_state.velocities.empty() ? 0.0 : first_state.velocities[i];
-        if (std::isnan(first_state_velocity))
-        {
-          first_state.velocities[i] = 0.0;
-          first_state_velocity = 0.0;
-        }
-        double second_state_velocity =
-          second_state.velocities.empty() ? 0.0 : second_state.velocities[i];
-        if (std::isnan(second_state_velocity))
-        {
-          second_state.velocities[i] = 0.0;
-          second_state_velocity = 0.0;
-        }
-
         second_state.positions[i] =
           first_state.positions[i] + (first_state_velocity + second_state_velocity) * 0.5 * delta_t;
       }
