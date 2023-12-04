@@ -235,7 +235,7 @@ protected:
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
   bool validate_trajectory_msg(const trajectory_msgs::msg::JointTrajectory & trajectory) const;
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
-  void add_new_trajectory_msg(
+  virtual void add_new_trajectory_msg(
     const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> & traj_msg);
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
   bool validate_trajectory_point_field(
@@ -270,7 +270,7 @@ protected:
     const rclcpp::Time & time, const JointTrajectoryPoint & desired_state,
     const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error);
 
-  void read_state_from_state_interfaces(JointTrajectoryPoint & state);
+  virtual void read_state_from_state_interfaces(JointTrajectoryPoint & state);
 
   /** Assign values from the command interfaces as state.
    * This is only possible if command AND state interfaces exist for the same type,
