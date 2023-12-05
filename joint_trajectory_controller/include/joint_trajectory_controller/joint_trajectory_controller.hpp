@@ -27,6 +27,7 @@
 #include "control_toolbox/pid.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "joint_limits/joint_limits.hpp"
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "joint_trajectory_controller/tolerances.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
@@ -193,6 +194,8 @@ protected:
   realtime_tools::RealtimeBuffer<bool> rt_has_pending_goal_;  ///< Is there a pending action goal?
   rclcpp::TimerBase::SharedPtr goal_handle_timer_;
   rclcpp::Duration action_monitor_period_ = rclcpp::Duration(50ms);
+
+  std::vector<joint_limits::JointLimits> joint_limits_;
 
   // callback for topic interface
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
