@@ -148,7 +148,8 @@ controller_interface::return_type JointTrajectoryController::update(
 
   // current state update
   state_current_.time_from_start.set__sec(0);
-  read_state_from_state_interfaces(state_current_);
+  if (!read_state_from_state_interfaces(state_current_))
+    return controller_interface::return_type::OK;
 
   // currently carrying out a trajectory
   if (has_active_trajectory())
@@ -402,7 +403,7 @@ controller_interface::return_type JointTrajectoryController::update(
   return controller_interface::return_type::OK;
 }
 
-void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
+bool JointTrajectoryController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
 {
   auto assign_point_from_interface =
     [&](std::vector<double> & trajectory_point_interface, const auto & joint_interface)
@@ -437,6 +438,7 @@ void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectory
     state.velocities.clear();
     state.accelerations.clear();
   }
+  return true;
 }
 
 bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajectoryPoint & state)
@@ -991,16 +993,17 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
   // running already)
   trajectory_msgs::msg::JointTrajectoryPoint state;
   resize_joint_trajectory_point(state, dof_);
+  if (!read_state_from_state_interfaces(state)) return CallbackReturn::ERROR;
+  state_current_ = state;
+  state_desired_ = state;
+  last_commanded_state_ = state;
+
+  // Handle restart of controller by reading from commands if those are not NaN
   if (read_state_from_command_interfaces(state))
   {
     state_current_ = state;
+    state_desired_ = state;
     last_commanded_state_ = state;
-  }
-  else
-  {
-    // Initialize current state storage from hardware
-    read_state_from_state_interfaces(state_current_);
-    read_state_from_state_interfaces(last_commanded_state_);
   }
 
   // The controller should start by holding position at the beginning of active state
