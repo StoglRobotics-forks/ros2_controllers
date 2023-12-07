@@ -140,6 +140,8 @@ protected:
   // For convenience, for each type the interfaces are ordered so that i-th position
   // matches i-th index in joint_names_
   template <typename T>
+  using JointInterfaceRefs = std::vector<std::reference_wrapper<T>>;
+  template <typename T>
   using InterfaceReferences = std::vector<std::vector<std::reference_wrapper<T>>>;
 
   InterfaceReferences<hardware_interface::LoanedCommandInterface> joint_command_interface_;
@@ -285,6 +287,7 @@ protected:
     const rclcpp::Time & time, const JointTrajectoryPoint & desired_state,
     const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error);
 
+  JOINT_TRAJECTORY_CONTROLLER_PUBLIC
   virtual bool read_state_from_state_interfaces(JointTrajectoryPoint & state);
 
   /** Assign values from the command interfaces as state.
@@ -299,6 +302,28 @@ protected:
   void query_state_service(
     const std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Request> request,
     std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Response> response);
+
+  // BEGIN: helper methods
+  template <typename T>
+  void assign_point_from_interface(
+    std::vector<double> & trajectory_point_interface, const JointInterfaceRefs<T> & joint_interface)
+  {
+    for (size_t index = 0; index < dof_; ++index)
+    {
+      trajectory_point_interface[index] = joint_interface[index].get().get_value();
+    }
+  };
+
+  template <typename T>
+  void assign_interface_from_point(
+    JointInterfaceRefs<T> & joint_interface, const std::vector<double> & trajectory_point_interface)
+  {
+    for (size_t index = 0; index < dof_; ++index)
+    {
+      joint_interface[index].get().set_value(trajectory_point_interface[index]);
+    }
+  };
+  // END: helper methods
 
 private:
   void update_pids();

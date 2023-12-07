@@ -406,15 +406,6 @@ controller_interface::return_type JointTrajectoryController::update(
 
 bool JointTrajectoryController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
 {
-  auto assign_point_from_interface =
-    [&](std::vector<double> & trajectory_point_interface, const auto & joint_interface)
-  {
-    for (size_t index = 0; index < dof_; ++index)
-    {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
-    }
-  };
-
   // Assign values from the hardware
   // Position states always exist
   assign_point_from_interface(state.positions, joint_state_interface_[0]);
@@ -445,15 +436,6 @@ bool JointTrajectoryController::read_state_from_state_interfaces(JointTrajectory
 bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajectoryPoint & state)
 {
   bool has_values = true;
-
-  auto assign_point_from_interface =
-    [&](std::vector<double> & trajectory_point_interface, const auto & joint_interface)
-  {
-    for (size_t index = 0; index < dof_; ++index)
-    {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
-    }
-  };
 
   auto interface_has_values = [](const auto & joint_interface)
   {
