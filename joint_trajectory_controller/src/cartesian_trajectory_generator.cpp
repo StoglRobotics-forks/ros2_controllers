@@ -96,9 +96,6 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
     return ret;
   }
 
-  // store joint limits for later
-  configured_joint_limits_ = joint_limits_;
-
   // topics QoS
   auto qos_best_effort_history_depth_one = rclcpp::SystemDefaultsQoS();
   qos_best_effort_history_depth_one.keep_last(1);
@@ -223,6 +220,15 @@ void CartesianTrajectoryGenerator::reference_callback(
 controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
   const rclcpp_lifecycle::State &)
 {
+  // update the dynamic map parameters
+  param_listener_->refresh_dynamic_parameters();
+
+  // get parameters from the listener in case they were updated
+  params_ = param_listener_->get_params();
+
+  // parse remaining parameters
+  default_tolerances_ = get_segment_tolerances(params_);
+
   // order all joints in the storage
   for (const auto & interface : params_.command_interfaces)
   {
@@ -253,42 +259,54 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
   //     }
   //   }
 
-  // Store 'home' pose
-  traj_msg_home_ptr_ = std::make_shared<trajectory_msgs::msg::JointTrajectory>();
-  traj_msg_home_ptr_->header.stamp.sec = 0;
-  traj_msg_home_ptr_->header.stamp.nanosec = 0;
-  traj_msg_home_ptr_->points.resize(1);
-  traj_msg_home_ptr_->points[0].time_from_start.sec = 0;
-  traj_msg_home_ptr_->points[0].time_from_start.nanosec = 50000000;
-  traj_msg_home_ptr_->points[0].positions.resize(joint_state_interface_[0].size());
-  for (size_t index = 0; index < joint_state_interface_[0].size(); ++index)
-  {
-    traj_msg_home_ptr_->points[0].positions[index] =
-      joint_state_interface_[0][index].get().get_value();
-  }
-
   traj_external_point_ptr_ = std::make_shared<joint_trajectory_controller::Trajectory>();
-  traj_home_point_ptr_ = std::make_shared<joint_trajectory_controller::Trajectory>();
   traj_msg_external_point_ptr_.writeFromNonRT(
     std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
 
   subscriber_is_active_ = true;
-  traj_point_active_ptr_ = &traj_external_point_ptr_;
 
-  // Initialize current state storage if hardware state has tracking offset
+  // Handle restart of controller by reading from commands if those are not NaN (a controller was
+  // running already)
   trajectory_msgs::msg::JointTrajectoryPoint state;
   resize_joint_trajectory_point(state, dof_);
   if (!read_state_from_state_interfaces(state)) return CallbackReturn::ERROR;
   state_current_ = state;
   state_desired_ = state;
   last_commanded_state_ = state;
-  // Handle restart of controller by reading from commands if
-  // those are not nan
+
+  // Handle restart of controller by reading from commands if those are not NaN
   if (read_state_from_command_interfaces(state))
   {
     state_current_ = state;
     state_desired_ = state;
     last_commanded_state_ = state;
+  }
+  last_commanded_time_ = rclcpp::Time();
+
+  // The controller should start by holding position at the beginning of active state
+  add_new_trajectory_msg(set_hold_position());
+  rt_is_holding_.writeFromNonRT(true);
+
+  // parse timeout parameter
+  if (params_.cmd_timeout > 0.0)
+  {
+    if (params_.cmd_timeout > default_tolerances_.goal_time_tolerance)
+    {
+      cmd_timeout_ = params_.cmd_timeout;
+    }
+    else
+    {
+      // deactivate timeout
+      RCLCPP_WARN(
+        get_node()->get_logger(),
+        "Command timeout must be higher than goal_time tolerance (%f vs. %f)", params_.cmd_timeout,
+        default_tolerances_.goal_time_tolerance);
+      cmd_timeout_ = 0.0;
+    }
+  }
+  else
+  {
+    cmd_timeout_ = 0.0;
   }
 
   return CallbackReturn::SUCCESS;
@@ -368,13 +386,10 @@ bool CartesianTrajectoryGenerator::read_state_from_state_interfaces(JointTraject
 
 void CartesianTrajectoryGenerator::publish_state(
   const rclcpp::Time & time, const JointTrajectoryPoint & desired_state,
-  const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error,
-  const JointTrajectoryPoint & splines_output, const JointTrajectoryPoint & ruckig_input_target,
-  const JointTrajectoryPoint & ruckig_input)
+  const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error)
 {
   joint_trajectory_controller::JointTrajectoryController::publish_state(
-    time, desired_state, current_state, state_error, splines_output, ruckig_input_target,
-    ruckig_input);
+    time, desired_state, current_state, state_error);
 
   if (cart_state_publisher_->trylock())
   {
