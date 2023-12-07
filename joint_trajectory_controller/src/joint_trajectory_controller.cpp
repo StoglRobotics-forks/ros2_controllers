@@ -414,9 +414,7 @@ controller_interface::return_type JointTrajectoryController::update(
     }
   }
 
-  publish_state(
-    time, state_desired_, state_current_, state_error_, splines_state_, ruckig_state_,
-    ruckig_input_state_);
+  publish_state(time, state_desired_, state_current_, state_error_);
   return controller_interface::return_type::OK;
 }
 
@@ -939,12 +937,12 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
       dof_, {false, std::numeric_limits<double>::quiet_NaN(),
              std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()});
 
-    // Here we read current reset dofs flags and clear it. This is done so we can add this new request
-    // to the existing reset flags. This logic prevents this new request from overwriting any previous request
-    // that hasn't been processed yet.
-    // The one assumption made here is that the current reset flags are not going to be processed
-    // between the two calls here to read and reset, which is a highly unlikely scenario. Even if it was,
-    // the behavior is fairly benign in that the dofs in the previous request will be reset twice.
+    // Here we read current reset dofs flags and clear it. This is done so we can add this new
+    // request to the existing reset flags. This logic prevents this new request from overwriting
+    // any previous request that hasn't been processed yet. The one assumption made here is that the
+    // current reset flags are not going to be processed between the two calls here to read and
+    // reset, which is a highly unlikely scenario. Even if it was, the behavior is fairly benign in
+    // that the dofs in the previous request will be reset twice.
     auto reset_flags = *reset_dofs_flags_.readFromNonRT();
     reset_dofs_flags_.writeFromNonRT(reset_flags_reset);
 
@@ -1186,9 +1184,7 @@ controller_interface::CallbackReturn JointTrajectoryController::on_shutdown(
 
 void JointTrajectoryController::publish_state(
   const rclcpp::Time & time, const JointTrajectoryPoint & desired_state,
-  const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error,
-  const JointTrajectoryPoint & splines_output, const JointTrajectoryPoint & ruckig_input_target,
-  const JointTrajectoryPoint & ruckig_input)
+  const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error)
 {
   if (state_publisher_->trylock())
   {
@@ -1214,39 +1210,6 @@ void JointTrajectoryController::publish_state(
     }
 
     state_publisher_->unlockAndPublish();
-  }
-
-  if (splines_output_publisher_ && splines_output_publisher_->trylock())
-  {
-    splines_output_publisher_->msg_.header.stamp = state_publisher_->msg_.header.stamp;
-    splines_output_publisher_->msg_.actual.positions = splines_output.positions;
-    splines_output_publisher_->msg_.actual.velocities = splines_output.velocities;
-    splines_output_publisher_->msg_.actual.accelerations = splines_output.accelerations;
-    splines_output_publisher_->msg_.actual.effort = splines_output.effort;
-
-    splines_output_publisher_->unlockAndPublish();
-  }
-
-  if (ruckig_input_publisher_ && ruckig_input_publisher_->trylock())
-  {
-    ruckig_input_publisher_->msg_.header.stamp = state_publisher_->msg_.header.stamp;
-    ruckig_input_publisher_->msg_.actual.positions = ruckig_input.positions;
-    ruckig_input_publisher_->msg_.actual.velocities = ruckig_input.velocities;
-    ruckig_input_publisher_->msg_.actual.accelerations = ruckig_input.accelerations;
-    ruckig_input_publisher_->msg_.actual.effort = ruckig_input.effort;
-
-    ruckig_input_publisher_->unlockAndPublish();
-  }
-
-  if (ruckig_input_target_publisher_ && ruckig_input_target_publisher_->trylock())
-  {
-    ruckig_input_target_publisher_->msg_.header.stamp = state_publisher_->msg_.header.stamp;
-    ruckig_input_target_publisher_->msg_.actual.positions = ruckig_input_target.positions;
-    ruckig_input_target_publisher_->msg_.actual.velocities = ruckig_input_target.velocities;
-    ruckig_input_target_publisher_->msg_.actual.accelerations = ruckig_input_target.accelerations;
-    ruckig_input_target_publisher_->msg_.actual.effort = ruckig_input_target.effort;
-
-    ruckig_input_target_publisher_->unlockAndPublish();
   }
 }
 

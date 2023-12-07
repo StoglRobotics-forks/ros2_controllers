@@ -24,14 +24,14 @@
 namespace joint_trajectory_controller
 {
 Trajectory::Trajectory()
-: trajectory_start_time_(0), time_before_traj_msg_(0), sampled_already_(false),
+: trajectory_start_time_(0), time_before_traj_msg_(0), sampled_already_(false)
 {
 }
 
 Trajectory::Trajectory(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
 : trajectory_msg_(joint_trajectory),
   trajectory_start_time_(static_cast<rclcpp::Time>(joint_trajectory->header.stamp)),
-  sampled_already_(false),
+  sampled_already_(false)
 {
 }
 
@@ -217,10 +217,7 @@ bool Trajectory::sample(
     }
   }
 
-  // do not do splines when trajectory has finished because the time is achieved
-  interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state)
-
-    if (joint_limiter)
+  if (joint_limiter)
   {
     // When running Joint Limiter we might not get to the last_point in time - so SplineIt!
     interpolate_between_points(

@@ -21,6 +21,7 @@
 
 #include "builtin_interfaces/msg/duration.hpp"
 #include "builtin_interfaces/msg/time.hpp"
+#include "joint_limits/joint_limiter_interface.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
 #include "rclcpp/clock.hpp"
 #include "rclcpp/duration.hpp"
@@ -36,6 +37,7 @@ namespace
 {
 // Floating-point value comparison threshold
 const double EPS = 1e-8;
+std::unique_ptr<joint_limits::JointLimiterInterface<joint_limits::JointLimits>> joint_limiter_;
 }  // namespace
 
 TEST(TestTrajectory, initialize_trajectory)
@@ -50,7 +52,9 @@ TEST(TestTrajectory, initialize_trajectory)
 
     trajectory_msgs::msg::JointTrajectoryPoint expected_point;
     joint_trajectory_controller::TrajectoryPointConstIter start, end;
-    traj.sample(clock.now(), DEFAULT_INTERPOLATION, expected_point, start, end);
+    traj.sample(
+      clock.now(), DEFAULT_INTERPOLATION, expected_point, start, end,
+      rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     // traj.sample(rclcpp::Clock().now(), DEFAULT_INTERPOLATION, output_point, start, end, );
 
     EXPECT_EQ(traj.end(), start);
@@ -67,7 +71,9 @@ TEST(TestTrajectory, initialize_trajectory)
 
     trajectory_msgs::msg::JointTrajectoryPoint expected_point;
     joint_trajectory_controller::TrajectoryPointConstIter start, end;
-    traj.sample(clock.now(), DEFAULT_INTERPOLATION, expected_point, start, end);
+    traj.sample(
+      clock.now(), DEFAULT_INTERPOLATION, expected_point, start, end,
+      rclcpp::Duration::from_seconds(0.1), joint_limiter_);
 
     EXPECT_EQ(traj.end(), start);
     EXPECT_EQ(traj.end(), end);
@@ -112,7 +118,9 @@ TEST(TestTrajectory, sample_trajectory_positions)
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end);
+    traj.sample(
+      time_now, DEFAULT_INTERPOLATION, expected_state, start, end,
+      rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -124,7 +132,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ(result, false);
   }
 
@@ -132,7 +140,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ(traj.begin(), end);
     double half_current_to_p1 = (point_before_msg.positions[0] + p1.positions[0]) * 0.5;
@@ -145,7 +153,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ((++traj.begin()), end);
     EXPECT_NEAR(p1.positions[0], expected_state.positions[0], EPS);
@@ -157,7 +165,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ((++traj.begin()), end);
     double half_p1_to_p2 = (p1.positions[0] + p2.positions[0]) * 0.5;
@@ -168,7 +176,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     double half_p2_to_p3 = (p2.positions[0] + p3.positions[0]) * 0.5;
     EXPECT_NEAR(half_p2_to_p3, expected_state.positions[0], EPS);
   }
@@ -177,7 +185,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
   }
 
@@ -185,7 +193,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.125), DEFAULT_INTERPOLATION, expected_state,
-      start, end);
+      start, end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ((--traj.end()), start);
     ASSERT_EQ(traj.end(), end);
     EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
@@ -196,7 +204,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(30.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ((--traj.end()), start);
     ASSERT_EQ(traj.end(), end);
     EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
@@ -353,7 +361,9 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end);
+    traj.sample(
+      time_now, DEFAULT_INTERPOLATION, expected_state, start, end,
+      rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -365,7 +375,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(result, false);
   }
 
@@ -373,7 +383,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     double half_current_to_p1 =
@@ -393,7 +403,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     EXPECT_NEAR(position_first_seg, expected_state.positions[0], EPS);
@@ -407,7 +417,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     double half_p1_to_p2 =
@@ -427,7 +437,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((++traj.begin()), start);
     EXPECT_EQ((--traj.end()), end);
     EXPECT_NEAR(position_second_seg, expected_state.positions[0], EPS);
@@ -441,7 +451,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((++traj.begin()), start);
     EXPECT_EQ((--traj.end()), end);
     double half_p2_to_p3 =
@@ -461,7 +471,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -474,7 +484,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.125), DEFAULT_INTERPOLATION, expected_state,
-      start, end);
+      start, end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -526,7 +536,9 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end);
+    traj.sample(
+      time_now, DEFAULT_INTERPOLATION, expected_state, start, end,
+      rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -539,7 +551,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(result, false);
   }
 
@@ -547,7 +559,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     //     double half_current_to_p1 = point_before_msg.positions[0] +
@@ -567,7 +579,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     EXPECT_NEAR(position_first_seg, expected_state.positions[0], EPS);
@@ -618,7 +630,9 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end);
+    traj.sample(
+      time_now, DEFAULT_INTERPOLATION, expected_state, start, end,
+      rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -631,7 +645,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(result, false);
   }
 
@@ -645,7 +659,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     EXPECT_NEAR(position_first_seg, expected_state.positions[0], EPS);
@@ -661,7 +675,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((++traj.begin()), start);
     EXPECT_EQ((--traj.end()), end);
     EXPECT_NEAR(position_second_seg, expected_state.positions[0], EPS);
@@ -677,7 +691,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -689,7 +703,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.125), DEFAULT_INTERPOLATION, expected_state,
-      start, end);
+      start, end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -735,7 +749,9 @@ TEST(TestTrajectory, skip_interpolation)
 
     // sample at trajectory starting time
     {
-      traj.sample(time_now, no_interpolation, expected_state, start, end);
+      traj.sample(
+        time_now, no_interpolation, expected_state, start, end, rclcpp::Duration::from_seconds(0.1),
+        joint_limiter_);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ(traj.begin(), end);
       EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -750,7 +766,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       bool result = traj.sample(
         time_now - rclcpp::Duration::from_seconds(0.5), no_interpolation, expected_state, start,
-        end);
+        end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
       ASSERT_EQ(result, false);
     }
 
@@ -758,7 +774,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(0.5), no_interpolation, expected_state, start,
-        end);
+        end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ(traj.begin(), end);
       // For passthrough, this should just return the first waypoint
@@ -774,7 +790,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(1.0), no_interpolation, expected_state, start,
-        end);
+        end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ((++traj.begin()), end);
       EXPECT_NEAR(p2.positions[0], expected_state.positions[0], EPS);
@@ -789,7 +805,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(1.5), no_interpolation, expected_state, start,
-        end);
+        end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ((++traj.begin()), end);
       EXPECT_NEAR(p2.positions[0], expected_state.positions[0], EPS);
@@ -799,7 +815,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(2.5), no_interpolation, expected_state, start,
-        end);
+        end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
       EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
     }
 
@@ -807,7 +823,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(3.0), no_interpolation, expected_state, start,
-        end);
+        end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
       EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
     }
 
@@ -815,7 +831,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(3.125), no_interpolation, expected_state, start,
-        end);
+        end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
       ASSERT_EQ((--traj.end()), start);
       ASSERT_EQ(traj.end(), end);
       EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);

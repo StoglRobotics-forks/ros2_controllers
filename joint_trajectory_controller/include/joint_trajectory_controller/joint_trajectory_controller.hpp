@@ -291,7 +291,7 @@ protected:
   bool has_active_trajectory() const;
 
   JOINT_TRAJECTORY_CONTROLLER_PUBLIC
-  void publish_state(
+  virtual void publish_state(
     const rclcpp::Time & time, const JointTrajectoryPoint & desired_state,
     const JointTrajectoryPoint & current_state, const JointTrajectoryPoint & state_error);
 
@@ -331,6 +331,9 @@ protected:
       joint_interface[index].get().set_value(trajectory_point_interface[index]);
     }
   };
+
+  void resize_joint_trajectory_point(
+    trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
   // END: helper methods
 
 private:
@@ -340,8 +343,6 @@ private:
     const std::vector<std::string> & interface_type_list, const std::string & interface_type);
 
   void init_hold_position_msg();
-  void resize_joint_trajectory_point(
-    trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
   void resize_joint_trajectory_point_command(
     trajectory_msgs::msg::JointTrajectoryPoint & point, size_t size);
 

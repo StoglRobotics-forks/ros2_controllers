@@ -161,6 +161,7 @@ private:
   trajectory_msgs::msg::JointTrajectoryPoint state_before_traj_msg_;
 
   bool sampled_already_ = false;
+  trajectory_msgs::msg::JointTrajectoryPoint previous_state_;
 };
 
 /**
