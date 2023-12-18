@@ -213,6 +213,11 @@ bool Trajectory::sample(
     }
   }
 
+  // whole animation has played out
+  start_segment_itr = --end();
+  end_segment_itr = end();
+  output_state = (*start_segment_itr);
+
   if (joint_limiter)
   {
     // When running Joint Limiter we might not get to the last_point in time - so SplineIt!
@@ -235,11 +240,6 @@ bool Trajectory::sample(
     // const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
     // // do not do splines when trajectory has finished because the time is achieved
     // interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state);
-
-    // whole animation has played out
-    start_segment_itr = --end();
-    end_segment_itr = end();
-    output_state = (*start_segment_itr);
   }
 
   return true;
