@@ -143,7 +143,7 @@ bool Trajectory::sample(
     const rclcpp::Time t0 = trajectory_start_time_ + point.time_from_start;
     const rclcpp::Time t1 = trajectory_start_time_ + next_point.time_from_start;
 
-    if (sample_time >= t0 && sample_time < t1)
+    if (sample_time >= t0 && sample_time <= t1)
     {
       // If interpolation is disabled, just forward the next waypoint
       if (interpolation_method == interpolation_methods::InterpolationMethod::NONE)
@@ -174,10 +174,6 @@ bool Trajectory::sample(
   auto & last_point = trajectory_msg_->points[trajectory_msg_->points.size() - 1];
 
   // FIXME(destogl): this is from backport - check if needed
-  //   // whole animation has played out
-  //   start_segment_itr = --end();
-  //   end_segment_itr = end();
-  //   expected_state = (*start_segment_itr);
   //
   //   // TODO: Add and test enforceJointLimits? Unsure if needed for end of animation
   //   // Yes, call enforceJointLimits to handle halting in servo, which has time_from_start == 1ns
@@ -235,9 +231,15 @@ bool Trajectory::sample(
   }
   else
   {
-    const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
-    // do not do splines when trajectory has finished because the time is achieved
-    interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state);
+    // OLD: the following 3 lines --> maybe to delete
+    // const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
+    // // do not do splines when trajectory has finished because the time is achieved
+    // interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state);
+
+    // whole animation has played out
+    start_segment_itr = --end();
+    end_segment_itr = end();
+    output_state = (*start_segment_itr);
   }
 
   return true;

@@ -196,6 +196,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
       start, end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     ASSERT_EQ((--traj.end()), start);
     ASSERT_EQ(traj.end(), end);
+    std::cout << "Expected state size: " << expected_state.positions.size() << std::endl;
     EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
   }
 
@@ -477,17 +478,17 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
     EXPECT_NEAR(p3.velocities[0], expected_state.velocities[0], EPS);
     // the goal is reached so no acceleration anymore
-    EXPECT_NEAR(0, expected_state.accelerations[0], EPS);
+    EXPECT_NEAR(0.0, expected_state.accelerations[0], EPS);
   }
 
-  // sample past given points - movement virtually stops
+  // sample past given points - if there is velocity continue sampling
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.125), DEFAULT_INTERPOLATION, expected_state,
       start, end, rclcpp::Duration::from_seconds(0.1), joint_limiter_);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
-    EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
+    EXPECT_NEAR(position_third_seg + p3.velocities[0] * 0.1, expected_state.positions[0], EPS);
     EXPECT_NEAR(p3.velocities[0], expected_state.velocities[0], EPS);
     EXPECT_NEAR(0.0, expected_state.accelerations[0], EPS);
   }
