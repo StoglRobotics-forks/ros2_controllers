@@ -289,8 +289,8 @@ TEST_F(TestTricycleController, cleanup)
   ASSERT_EQ(State::PRIMARY_STATE_UNCONFIGURED, state.id());
 
   // should be stopped
-  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value());
-  EXPECT_EQ(0.0, traction_joint_vel_cmd_.get_value());
+  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value<double>());
+  EXPECT_EQ(0.0, traction_joint_vel_cmd_.get_value<double>());
 
   executor.cancel();
 }
@@ -310,8 +310,8 @@ TEST_F(TestTricycleController, correct_initialization_using_parameters)
   assignResources();
 
   ASSERT_EQ(State::PRIMARY_STATE_INACTIVE, state.id());
-  EXPECT_EQ(position_, steering_joint_pos_cmd_.get_value());
-  EXPECT_EQ(velocity_, traction_joint_vel_cmd_.get_value());
+  EXPECT_EQ(position_, steering_joint_pos_cmd_.get_value<double>());
+  EXPECT_EQ(velocity_, traction_joint_vel_cmd_.get_value<double>());
 
   state = controller_->get_node()->activate();
   ASSERT_EQ(State::PRIMARY_STATE_ACTIVE, state.id());
@@ -326,8 +326,8 @@ TEST_F(TestTricycleController, correct_initialization_using_parameters)
   ASSERT_EQ(
     controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
-  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value());
-  EXPECT_EQ(1.0, traction_joint_vel_cmd_.get_value());
+  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value<double>());
+  EXPECT_EQ(1.0, traction_joint_vel_cmd_.get_value<double>());
 
   // deactivated
   // wait so controller process the second point when deactivated
@@ -338,14 +338,16 @@ TEST_F(TestTricycleController, correct_initialization_using_parameters)
     controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
-  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value()) << "Wheels are halted on deactivate()";
-  EXPECT_EQ(0.0, traction_joint_vel_cmd_.get_value()) << "Wheels are halted on deactivate()";
+  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value<double>())
+    << "Wheels are halted on deactivate()";
+  EXPECT_EQ(0.0, traction_joint_vel_cmd_.get_value<double>())
+    << "Wheels are halted on deactivate()";
 
   // cleanup
   state = controller_->get_node()->cleanup();
   ASSERT_EQ(State::PRIMARY_STATE_UNCONFIGURED, state.id());
-  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value());
-  EXPECT_EQ(0.0, traction_joint_vel_cmd_.get_value());
+  EXPECT_EQ(0.0, steering_joint_pos_cmd_.get_value<double>());
+  EXPECT_EQ(0.0, traction_joint_vel_cmd_.get_value<double>());
 
   state = controller_->get_node()->configure();
   ASSERT_EQ(State::PRIMARY_STATE_INACTIVE, state.id());
