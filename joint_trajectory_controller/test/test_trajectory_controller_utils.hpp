@@ -594,9 +594,10 @@ public:
         for (size_t i = 0; i < 3; i++)
         {
           EXPECT_TRUE(is_same_sign_or_zero(
-            position.at(i) - pos_state_interfaces_[i].get_value(), joint_vel_[i]))
+            position.at(i) - pos_state_interfaces_[i].get_value<double>(), joint_vel_[i]))
             << "test position point " << position.at(i) << ", position state is "
-            << pos_state_interfaces_[i].get_value() << ", velocity command is " << joint_vel_[i];
+            << pos_state_interfaces_[i].get_value<double>() << ", velocity command is "
+            << joint_vel_[i];
         }
       }
       if (traj_controller_->has_effort_command_interface())
@@ -604,9 +605,10 @@ public:
         for (size_t i = 0; i < 3; i++)
         {
           EXPECT_TRUE(is_same_sign_or_zero(
-            position.at(i) - pos_state_interfaces_[i].get_value(), joint_eff_[i]))
+            position.at(i) - pos_state_interfaces_[i].get_value<double>(), joint_eff_[i]))
             << "test position point " << position.at(i) << ", position state is "
-            << pos_state_interfaces_[i].get_value() << ", effort command is " << joint_eff_[i];
+            << pos_state_interfaces_[i].get_value<double>() << ", effort command is "
+            << joint_eff_[i];
         }
       }
     }
