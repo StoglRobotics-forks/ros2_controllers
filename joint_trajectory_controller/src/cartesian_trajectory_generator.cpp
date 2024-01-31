@@ -112,9 +112,9 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
     "~/reference_reliable", subscribers_reliable_qos,
     std::bind(&CartesianTrajectoryGenerator::reference_callback, this, std::placeholders::_1));
 
-  std::shared_ptr<ControllerReferenceMsg> msg = std::make_shared<ControllerReferenceMsg>();
-  reset_controller_reference_msg(msg);
-  reference_world_.writeFromNonRT(msg);
+  std::shared_ptr<ControllerReferenceMsg> msg_reset = std::make_shared<ControllerReferenceMsg>();
+  reset_controller_reference_msg(msg_reset);
+  reference_world_.writeFromNonRT(msg_reset);
 
   // Odometry feedback
   auto feedback_callback = [&](const std::shared_ptr<ControllerFeedbackMsg> msg) -> void
