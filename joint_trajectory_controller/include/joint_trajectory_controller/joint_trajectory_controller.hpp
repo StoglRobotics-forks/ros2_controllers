@@ -234,6 +234,12 @@ protected:
   void goal_accepted_callback(
     std::shared_ptr<rclcpp_action::ServerGoalHandle<FollowJTrajAction>> goal_handle);
 
+  // Callback for services
+  JOINT_TRAJECTORY_CONTROLLER_PUBLIC
+  void reset_dofs_service_callback(
+    const std::shared_ptr<ControllerResetDofsSrvType::Request> request,
+    std::shared_ptr<ControllerResetDofsSrvType::Response> response);
+
   using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
 
   /**

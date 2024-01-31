@@ -901,93 +901,9 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
            std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()});
   reset_dofs_flags_.writeFromNonRT(reset_flags);
 
-  // Control mode service
-  auto reset_dofs_service_callback =
-    [&](
-      const std::shared_ptr<ControllerResetDofsSrvType::Request> request,
-      std::shared_ptr<ControllerResetDofsSrvType::Response> response)
-  {
-    response->ok = true;
-
-    if (
-      (request->positions.size() != request->velocities.size()) ||
-      (request->velocities.size() != request->accelerations.size()))
-    {
-      RCLCPP_ERROR(
-        get_node()->get_logger(),
-        "Reset dofs service call has different values size for positions %ld, velocities %ld, "
-        "accelerations %ld",
-        request->positions.size(), request->velocities.size(), request->accelerations.size());
-      response->ok = false;
-      return;
-    }
-
-    if ((request->positions.size() > 0) && (request->names.size() != request->positions.size()))
-    {
-      RCLCPP_ERROR(
-        get_node()->get_logger(),
-        "Reset dofs service call has names size %ld different than positions size %ld",
-        request->names.size(), request->positions.size());
-      response->ok = false;
-      return;
-    }
-
-    std::vector<ResetDofsData> reset_flags_reset;
-    reset_flags_reset.resize(
-      dof_, {false, std::numeric_limits<double>::quiet_NaN(),
-             std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()});
-
-    // Here we read current reset dofs flags and clear it. This is done so we can add this new
-    // request to the existing reset flags. This logic prevents this new request from overwriting
-    // any previous request that hasn't been processed yet. The one assumption made here is that the
-    // current reset flags are not going to be processed between the two calls here to read and
-    // reset, which is a highly unlikely scenario. Even if it was, the behavior is fairly benign in
-    // that the dofs in the previous request will be reset twice.
-    auto reset_flags = *reset_dofs_flags_.readFromNonRT();
-    reset_dofs_flags_.writeFromNonRT(reset_flags_reset);
-
-    // add/update reset dofs flags from request
-    for (size_t i = 0; i < request->names.size(); ++i)
-    {
-      auto it =
-        std::find(command_joint_names_.begin(), command_joint_names_.end(), request->names[i]);
-      if (it != command_joint_names_.end())
-      {
-        auto cmd_itf_index = std::distance(command_joint_names_.begin(), it);
-        double pos = (request->positions.size() != 0) ? request->positions[i]
-                                                      : std::numeric_limits<double>::quiet_NaN();
-
-        if (request->positions.size() != 0)
-        {
-          RCLCPP_INFO(get_node()->get_logger(), "Resetting dof '%s'", request->names[i].c_str());
-        }
-        else
-        {
-          RCLCPP_INFO(
-            get_node()->get_logger(), "Resetting dof '%s' position to %f",
-            request->names[i].c_str(), pos);
-        }
-        double vel = (request->velocities.size() != 0) ? request->velocities[i]
-                                                       : std::numeric_limits<double>::quiet_NaN();
-        double accel = (request->accelerations.size() != 0)
-                         ? request->accelerations[i]
-                         : std::numeric_limits<double>::quiet_NaN();
-        reset_flags[cmd_itf_index] = {true, pos, vel, accel};
-      }
-      else
-      {
-        RCLCPP_WARN(
-          get_node()->get_logger(), "Name '%s' is not command interface. Ignoring this entry.",
-          request->names[i].c_str());
-        response->ok = false;
-      }
-    }
-
-    reset_dofs_flags_.writeFromNonRT(reset_flags);
-  };
-
   reset_dofs_service_ = get_node()->create_service<ControllerResetDofsSrvType>(
-    "~/reset_dofs", reset_dofs_service_callback);
+    "~/reset_dofs",
+    std::bind(&JointTrajectoryController::reset_dofs_service_callback, this, _1, _2));
 
   return CallbackReturn::SUCCESS;
 }
@@ -1304,6 +1220,89 @@ void JointTrajectoryController::goal_accepted_callback(
   goal_handle_timer_ = get_node()->create_wall_timer(
     action_monitor_period_.to_chrono<std::chrono::nanoseconds>(),
     std::bind(&RealtimeGoalHandle::runNonRealtime, rt_goal));
+}
+
+void JointTrajectoryController::reset_dofs_service_callback(
+  const std::shared_ptr<ControllerResetDofsSrvType::Request> request,
+  std::shared_ptr<ControllerResetDofsSrvType::Response> response)
+{
+  response->ok = true;
+
+  if (
+    (request->positions.size() != request->velocities.size()) ||
+    (request->velocities.size() != request->accelerations.size()))
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "Reset dofs service call has different values size for positions %ld, velocities %ld, "
+      "accelerations %ld",
+      request->positions.size(), request->velocities.size(), request->accelerations.size());
+    response->ok = false;
+    return;
+  }
+
+  if ((request->positions.size() > 0) && (request->names.size() != request->positions.size()))
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "Reset dofs service call has names size %ld different than positions size %ld",
+      request->names.size(), request->positions.size());
+    response->ok = false;
+    return;
+  }
+
+  std::vector<ResetDofsData> reset_flags_reset;
+  reset_flags_reset.resize(
+    dof_, {false, std::numeric_limits<double>::quiet_NaN(),
+           std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()});
+
+  // Here we read current reset dofs flags and clear it. This is done so we can add this new
+  // request to the existing reset flags. This logic prevents this new request from overwriting
+  // any previous request that hasn't been processed yet. The one assumption made here is that the
+  // current reset flags are not going to be processed between the two calls here to read and
+  // reset, which is a highly unlikely scenario. Even if it was, the behavior is fairly benign in
+  // that the dofs in the previous request will be reset twice.
+  auto reset_flags = *reset_dofs_flags_.readFromNonRT();
+  reset_dofs_flags_.writeFromNonRT(reset_flags_reset);
+
+  // add/update reset dofs flags from request
+  for (size_t i = 0; i < request->names.size(); ++i)
+  {
+    auto it =
+      std::find(command_joint_names_.begin(), command_joint_names_.end(), request->names[i]);
+    if (it != command_joint_names_.end())
+    {
+      auto cmd_itf_index = std::distance(command_joint_names_.begin(), it);
+      double pos = (request->positions.size() != 0) ? request->positions[i]
+                                                    : std::numeric_limits<double>::quiet_NaN();
+
+      if (request->positions.size() != 0)
+      {
+        RCLCPP_INFO(get_node()->get_logger(), "Resetting dof '%s'", request->names[i].c_str());
+      }
+      else
+      {
+        RCLCPP_INFO(
+          get_node()->get_logger(), "Resetting dof '%s' position to %f", request->names[i].c_str(),
+          pos);
+      }
+      double vel = (request->velocities.size() != 0) ? request->velocities[i]
+                                                     : std::numeric_limits<double>::quiet_NaN();
+      double accel = (request->accelerations.size() != 0)
+                       ? request->accelerations[i]
+                       : std::numeric_limits<double>::quiet_NaN();
+      reset_flags[cmd_itf_index] = {true, pos, vel, accel};
+    }
+    else
+    {
+      RCLCPP_WARN(
+        get_node()->get_logger(), "Name '%s' is not command interface. Ignoring this entry.",
+        request->names[i].c_str());
+      response->ok = false;
+    }
+  }
+
+  reset_dofs_flags_.writeFromNonRT(reset_flags);
 }
 
 void JointTrajectoryController::compute_error_for_joint(
