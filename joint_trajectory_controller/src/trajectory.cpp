@@ -71,6 +71,8 @@ bool Trajectory::sample(
 {
   THROW_ON_NULLPTR(trajectory_msg_)
 
+  RCUTILS_LOG_ERROR_NAMED("trajectory", "Sampling Trajectory");
+
   if (trajectory_msg_->points.empty())
   {
     start_segment_itr = end();
@@ -105,6 +107,7 @@ bool Trajectory::sample(
   // current time hasn't reached traj time of the first point in the msg yet
   if (sample_time < first_point_timestamp)
   {
+    RCUTILS_LOG_ERROR_NAMED("trajectory", "Before Start time");
     // If interpolation is disabled, just forward the next waypoint
     if (interpolation_method == interpolation_methods::InterpolationMethod::NONE)
     {
@@ -169,6 +172,8 @@ bool Trajectory::sample(
       return true;
     }
   }
+
+  RCUTILS_LOG_ERROR_NAMED("trajectory", "Managing last point");
 
   // whole animation has played out - but still continue s interpolating and smoothing
   auto & last_point = trajectory_msg_->points[trajectory_msg_->points.size() - 1];
@@ -237,9 +242,9 @@ bool Trajectory::sample(
   else
   {
     // OLD: the following 3 lines --> maybe to delete
-    // const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
+    const rclcpp::Time t0 = trajectory_start_time_ + last_point.time_from_start;
     // // do not do splines when trajectory has finished because the time is achieved
-    // interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state);
+    interpolate_between_points(t0, last_point, t0, last_point, sample_time, output_state);
   }
 
   return true;

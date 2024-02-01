@@ -717,6 +717,9 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
   {
     const auto & gains = params_.gains.joints_map.at(params_.joints[i]);
     joints_angle_wraparound_[i] = gains.angle_wraparound;
+    RCLCPP_INFO(
+      get_node()->get_logger(), "Angle Wraparound for joint '%s' is '%s'",
+      params_.joints[i].c_str(), joints_angle_wraparound_[i] ? "true" : "false");
   }
 
   // Initialize joint limits
@@ -1312,6 +1315,15 @@ void JointTrajectoryController::compute_error_for_joint(
   // error defined as the difference between current and desired
   if (joints_angle_wraparound_[index])
   {
+    RCLCPP_WARN(
+      get_node()->get_logger(), "Calculating angular distance between sizes: %zu and desired: %zu.",
+      current.positions.size(), desired.positions.size());
+    RCLCPP_WARN(
+      get_node()->get_logger(), "Calculating angular distance between current: %.5f.",
+      current.positions[index]);
+    RCLCPP_WARN(
+      get_node()->get_logger(), "Calculating angular distance between desired: %.5f.",
+      desired.positions[index]);
     // if desired, the shortest_angular_distance is calculated, i.e., the error is
     //  normalized between -pi<error<pi
     error.positions[index] =
@@ -1319,6 +1331,16 @@ void JointTrajectoryController::compute_error_for_joint(
   }
   else
   {
+    RCLCPP_WARN(get_node()->get_logger(), "Calculating for index: %zu.", index);
+    RCLCPP_WARN(
+      get_node()->get_logger(), "Calculating angular distance between sizes: %zu and desired: %zu.",
+      current.positions.size(), desired.positions.size());
+    RCLCPP_WARN(
+      get_node()->get_logger(), "Calculating angular distance between current: %.5f.",
+      current.positions[index]);
+    RCLCPP_WARN(
+      get_node()->get_logger(), "Calculating angular distance between desired: %.5f.",
+      desired.positions[index]);
     error.positions[index] = desired.positions[index] - current.positions[index];
   }
   if (
