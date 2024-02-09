@@ -214,7 +214,7 @@ void CartesianTrajectoryGenerator::reference_callback(
   assign_value_from_input(
     msg->transforms[0].rotation.z, msg->velocities[0].angular.z, params_.joints[5], 5);
 
-  add_new_trajectory_msg(new_traj_msg);
+  topic_callback(new_traj_msg);
 }
 
 controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
@@ -259,9 +259,8 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
   //     }
   //   }
 
-  traj_external_point_ptr_ = std::make_shared<joint_trajectory_controller::Trajectory>();
-  traj_msg_external_point_ptr_.writeFromNonRT(
-    std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
+  current_trajectory_ = std::make_shared<joint_trajectory_controller::Trajectory>();
+  new_trajectory_msg_.writeFromNonRT(std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
 
   subscriber_is_active_ = true;
 
