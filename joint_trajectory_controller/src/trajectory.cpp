@@ -52,6 +52,7 @@ void Trajectory::set_point_before_trajectory_msg(
 {
   time_before_traj_msg_ = current_time;
   state_before_traj_msg_ = current_point;
+  previous_state_ = current_point;
 }
 
 void Trajectory::update(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
@@ -70,8 +71,6 @@ bool Trajectory::sample(
   std::unique_ptr<joint_limits::JointLimiterInterface<joint_limits::JointLimits>> & joint_limiter)
 {
   THROW_ON_NULLPTR(trajectory_msg_)
-
-  RCUTILS_LOG_ERROR_NAMED("trajectory", "Sampling Trajectory");
 
   if (trajectory_msg_->points.empty())
   {
@@ -107,16 +106,14 @@ bool Trajectory::sample(
   // current time hasn't reached traj time of the first point in the msg yet
   if (sample_time < first_point_timestamp)
   {
-    RCUTILS_LOG_ERROR_NAMED("trajectory", "Before Start time");
     // If interpolation is disabled, just forward the next waypoint
     if (interpolation_method == interpolation_methods::InterpolationMethod::NONE)
     {
       output_state = state_before_traj_msg_;
-      previous_state_ = state_before_traj_msg_;
     }
     else
     {
-      // it changes points only if position and velocity do not exist, but their derivatives
+      // it changes a point only if position and velocity do not exist, but their derivatives
       deduce_from_derivatives(
         state_before_traj_msg_, first_point_in_msg, state_before_traj_msg_.positions.size(),
         (first_point_timestamp - time_before_traj_msg_).seconds());
@@ -130,7 +127,7 @@ bool Trajectory::sample(
 
     if (joint_limiter)
     {
-      joint_limiter->enforce(previous_state_, output_state, period);
+      joint_limiter->enforce(state_before_traj_msg_, output_state, period);
     }
     previous_state_ = output_state;
     return true;
@@ -172,8 +169,6 @@ bool Trajectory::sample(
       return true;
     }
   }
-
-  RCUTILS_LOG_ERROR_NAMED("trajectory", "Managing last point");
 
   // whole animation has played out - but still continue s interpolating and smoothing
   auto & last_point = trajectory_msg_->points[trajectory_msg_->points.size() - 1];
