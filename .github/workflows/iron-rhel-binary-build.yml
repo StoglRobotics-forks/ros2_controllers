@@ -1,7 +1,7 @@
-name: Iron RHEL Binary Build
+name: RHEL Iron Binary Build
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
       - iron
   schedule:
@@ -12,17 +12,9 @@ on:
 jobs:
   iron_rhel_binary:
     name: Iron RHEL binary build
-    runs-on: ubuntu-latest
-    env:
-      ROS_DISTRO: iron
-    container: ghcr.io/ros-controls/ros:iron-rhel
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: src/ros2_controllers
-      - run: |
-          rosdep update
-          rosdep install -iy --from-path src/ros2_controllers
-          source /opt/ros/${{ env.ROS_DISTRO }}/setup.bash
-          colcon build
-          colcon test
+    uses: ./.github/workflows/reusable-rhel-binary-build.yml
+    with:
+      ros_distro: iron
+      upstream_workspace: ros2_controllers.iron.repos
+      ref_for_scheduled_build: iron
+      skip_packages: rqt_joint_trajectory_controller

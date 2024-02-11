@@ -18,11 +18,14 @@
 #include <memory>
 #include <vector>
 
+#include "joint_limits/joint_limiter_interface.hpp"
+#include "joint_limits/joint_limits.hpp"
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "joint_trajectory_controller/visibility_control.h"
 #include "rclcpp/time.hpp"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
+
 namespace joint_trajectory_controller
 {
 using TrajectoryPointIter = std::vector<trajectory_msgs::msg::JointTrajectoryPoint>::iterator;
@@ -89,7 +92,10 @@ public:
     const rclcpp::Time & sample_time,
     const interpolation_methods::InterpolationMethod interpolation_method,
     trajectory_msgs::msg::JointTrajectoryPoint & output_state,
-    TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr);
+    TrajectoryPointConstIter & start_segment_itr, TrajectoryPointConstIter & end_segment_itr,
+    const rclcpp::Duration & period,
+    std::unique_ptr<joint_limits::JointLimiterInterface<joint_limits::JointLimits>> &
+      joint_limiter);
 
   /**
    * Do interpolation between 2 states given a time in between their respective timestamps
@@ -155,6 +161,7 @@ private:
   trajectory_msgs::msg::JointTrajectoryPoint state_before_traj_msg_;
 
   bool sampled_already_ = false;
+  trajectory_msgs::msg::JointTrajectoryPoint previous_state_;
 };
 
 /**
