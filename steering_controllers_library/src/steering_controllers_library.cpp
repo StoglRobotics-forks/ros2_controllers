@@ -116,6 +116,9 @@ controller_interface::CallbackReturn SteeringControllersLibrary::on_configure(
   ref_timeout_ = rclcpp::Duration::from_seconds(params_.reference_timeout);
   if (params_.use_stamped_vel)
   {
+    RCLCPP_WARN(
+      get_node()->get_logger(),
+      "[Deprecated] Using geometry_msgs::msg::Twist instead of TwistStamped is deprecated.");
     ref_subscriber_twist_ = get_node()->create_subscription<ControllerTwistReferenceMsg>(
       "~/reference", subscribers_qos,
       std::bind(&SteeringControllersLibrary::reference_callback, this, std::placeholders::_1));
@@ -443,10 +446,11 @@ controller_interface::return_type SteeringControllersLibrary::update_and_write_c
   if (!std::isnan(reference_interfaces_[0]) && !std::isnan(reference_interfaces_[1]))
   {
     // store and set commands
-    const double linear_command = reference_interfaces_[0];
-    const double angular_command = reference_interfaces_[1];
+    last_linear_velocity_ = reference_interfaces_[0];
+    last_angular_velocity_ = reference_interfaces_[1];
+
     auto [traction_commands, steering_commands] =
-      odometry_.get_commands(linear_command, angular_command);
+      odometry_.get_commands(last_linear_velocity_, last_angular_velocity_);
     if (params_.front_steering)
     {
       for (size_t i = 0; i < params_.rear_wheels_names.size(); i++)

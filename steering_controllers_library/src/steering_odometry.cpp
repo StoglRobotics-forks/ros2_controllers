@@ -210,7 +210,7 @@ double SteeringOdometry::convert_trans_rot_vel_to_steering_angle(double Vx, doub
 }
 
 std::tuple<std::vector<double>, std::vector<double>> SteeringOdometry::get_commands(
-  double Vx, double theta_dot)
+  const double Vx, const double theta_dot)
 {
   // desired velocity and steering angle of the middle of traction and steering axis
   double Ws, alpha;
@@ -270,8 +270,8 @@ std::tuple<std::vector<double>, std::vector<double>> SteeringOdometry::get_comma
       double denominator_first_member = 2 * wheelbase_ * std::cos(alpha);
       double denominator_second_member = wheel_track_ * std::sin(alpha);
 
-      double alpha_r = std::atan2(numerator, denominator_first_member - denominator_second_member);
-      double alpha_l = std::atan2(numerator, denominator_first_member + denominator_second_member);
+      double alpha_r = std::atan2(numerator, denominator_first_member + denominator_second_member);
+      double alpha_l = std::atan2(numerator, denominator_first_member - denominator_second_member);
       steering_commands = {alpha_r, alpha_l};
     }
     return std::make_tuple(traction_commands, steering_commands);
@@ -324,8 +324,8 @@ void SteeringOdometry::integrate_exact(double linear, double angular)
 
 void SteeringOdometry::reset_accumulators()
 {
-  linear_acc_ = rcpputils::RollingMeanAccumulator<double>(velocity_rolling_window_size_);
-  angular_acc_ = rcpputils::RollingMeanAccumulator<double>(velocity_rolling_window_size_);
+  linear_acc_ = RollingMeanAccumulator(velocity_rolling_window_size_);
+  angular_acc_ = RollingMeanAccumulator(velocity_rolling_window_size_);
 }
 
 }  // namespace steering_odometry

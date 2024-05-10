@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(joint_trajectory_controller LANGUAGES CXX)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang)")
-  add_compile_options(-Wall -Wextra -Wconversion)
+  add_compile_options(-Wall -Wextra -Werror=conversion -Werror=unused-but-set-variable -Werror=return-type -Werror=shadow -Werror=format)
 endif()
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
@@ -19,6 +19,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rsl
   tl_expected
   trajectory_msgs
+  urdf
 )
 
 find_package(ament_cmake REQUIRED)
@@ -58,14 +59,15 @@ if(BUILD_TESTING)
 
   ament_add_gmock(test_trajectory test/test_trajectory.cpp)
   target_link_libraries(test_trajectory joint_trajectory_controller)
+  target_compile_definitions(test_trajectory PRIVATE _USE_MATH_DEFINES)
 
   ament_add_gmock(test_trajectory_controller
-    test/test_trajectory_controller.cpp
-    ENV config_file=${CMAKE_CURRENT_SOURCE_DIR}/test/config/test_joint_trajectory_controller.yaml)
+    test/test_trajectory_controller.cpp)
   set_tests_properties(test_trajectory_controller PROPERTIES TIMEOUT 220)
   target_link_libraries(test_trajectory_controller
     joint_trajectory_controller
   )
+  target_compile_definitions(joint_trajectory_controller PRIVATE _USE_MATH_DEFINES)
 
   ament_add_gmock(test_load_joint_trajectory_controller
     test/test_load_joint_trajectory_controller.cpp
