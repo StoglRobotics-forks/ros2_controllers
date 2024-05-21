@@ -918,6 +918,11 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
     "~/set_scaling_factor", std::bind(
                               &JointTrajectoryController::set_scaling_factor, this,
                               std::placeholders::_1, std::placeholders::_2));
+  
+  get_scaling_factor_srv_ = get_node()->create_service<control_msgs::srv::GetScalingFactor>(
+    "~/get_scaling_factor", std::bind(
+                              &JointTrajectoryController::get_scaling_factor, this,
+                              std::placeholders::_1, std::placeholders::_2));
 
   // set scaling factor to low value default
   scaling_factor_rt_buff_.writeFromNonRT(params_.scaling_factor_initial_default);
@@ -1631,6 +1636,15 @@ bool JointTrajectoryController::set_scaling_factor(
 
   RCLCPP_INFO(get_node()->get_logger(), "New scaling factor will be %f", req->scaling_factor);
   scaling_factor_rt_buff_.writeFromNonRT(req->scaling_factor);
+  resp->success = true;
+  return true;
+}
+
+bool JointTrajectoryController::get_scaling_factor(
+  control_msgs::srv::GetScalingFactor::Request::SharedPtr /*req*/,
+  control_msgs::srv::GetScalingFactor::Response::SharedPtr resp)
+{
+  resp->scaling_factor = *(scaling_factor_rt_buff_.readFromNonRT());
   resp->success = true;
   return true;
 }
