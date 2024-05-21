@@ -25,6 +25,7 @@
 #include "control_msgs/msg/joint_trajectory_controller_state.hpp"
 #include "control_msgs/srv/query_trajectory_state.hpp"
 #include "control_msgs/srv/set_scaling_factor.hpp"
+#include "control_msgs/srv/get_scaling_factor.hpp"
 #include "control_toolbox/pid.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -32,6 +33,7 @@
 #include "joint_trajectory_controller/tolerances.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
 #include "joint_trajectory_controller/visibility_control.h"
+
 #include "rclcpp/duration.hpp"
 #include "rclcpp/subscription.hpp"
 #include "rclcpp/time.hpp"
@@ -304,9 +306,14 @@ private:
   bool set_scaling_factor(
     control_msgs::srv::SetScalingFactor::Request::SharedPtr req,
     control_msgs::srv::SetScalingFactor::Response::SharedPtr resp);
+  
+  bool get_scaling_factor(
+    control_msgs::srv::GetScalingFactor::Request::SharedPtr req,
+    control_msgs::srv::GetScalingFactor::Response::SharedPtr resp);
 
   realtime_tools::RealtimeBuffer<double> scaling_factor_rt_buff_;
   rclcpp::Service<control_msgs::srv::SetScalingFactor>::SharedPtr set_scaling_factor_srv_;
+  rclcpp::Service<control_msgs::srv::GetScalingFactor>::SharedPtr get_scaling_factor_srv_;
 
   /**
    * @brief Assigns the values from a trajectory point interface to a joint interface.
