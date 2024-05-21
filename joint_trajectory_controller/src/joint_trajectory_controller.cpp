@@ -1621,7 +1621,7 @@ bool JointTrajectoryController::set_scaling_factor(
   control_msgs::srv::SetScalingFactor::Request::SharedPtr req,
   control_msgs::srv::SetScalingFactor::Response::SharedPtr resp)
 {
-  if (req->scaling_factor < 0 && req->scaling_factor > 1)
+  if (req->scaling_factor < 0 || req->scaling_factor > 1)
   {
     RCLCPP_WARN(
       get_node()->get_logger(), "Scaling factor has to be in range [0, 1]. Ignoring input!");
