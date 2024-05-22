@@ -23,12 +23,15 @@
 
 #include "gripper_controllers/gripper_action_controller.hpp"
 #include "hardware_interface/handle.hpp"
+#include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 
 using hardware_interface::CommandInterface;
 using hardware_interface::HW_IF_EFFORT;
 using hardware_interface::HW_IF_POSITION;
 using hardware_interface::HW_IF_VELOCITY;
+using hardware_interface::InterfaceDescription;
+using hardware_interface::InterfaceInfo;
 using hardware_interface::StateInterface;
 
 namespace
@@ -59,12 +62,13 @@ protected:
 
   // dummy joint state values used for tests
   const std::string joint_name_ = "joint1";
-  std::vector<double> joint_states_ = {1.1, 2.1};
-  std::vector<double> joint_commands_ = {3.1};
 
-  StateInterface joint_1_pos_state_{joint_name_, HW_IF_POSITION, &joint_states_[0]};
-  StateInterface joint_1_vel_state_{joint_name_, HW_IF_VELOCITY, &joint_states_[1]};
-  CommandInterface joint_1_cmd_{joint_name_, T::value, &joint_commands_[0]};
+  StateInterface joint_1_pos_state_{
+    InterfaceDescription(joint_name_, InterfaceInfo(HW_IF_POSITION, "1.1", "double"))};
+  StateInterface joint_1_vel_state_{
+    InterfaceDescription(joint_name_, InterfaceInfo(HW_IF_VELOCITY, "2.1", "double"))};
+  CommandInterface joint_1_cmd_{
+    InterfaceDescription(joint_name_, InterfaceInfo(T::value, "3.1", "double"))};
 };
 
 }  // anonymous namespace
