@@ -25,6 +25,7 @@
 #include "angles/angles.h"
 #include "control_msgs/msg/single_dof_state.hpp"
 #include "controller_interface/helpers.hpp"
+#include "hardware_interface/hardware_info.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp/version.h"
@@ -53,7 +54,8 @@ static const rmw_qos_profile_t qos_services = {
 #endif
 
 using ControllerCommandMsg = pid_controller::PidController::ControllerReferenceMsg;
-
+using hardware_interface::InterfaceDescription;
+using hardware_interface::InterfaceInfo;
 // called from RT control loop
 void reset_controller_reference_msg(
   const std::shared_ptr<ControllerCommandMsg> & msg, const std::vector<std::string> & dof_names)
@@ -352,14 +354,12 @@ std::vector<hardware_interface::CommandInterface> PidController::on_export_refer
   std::vector<hardware_interface::CommandInterface> reference_interfaces;
   reference_interfaces.reserve(reference_interfaces_.size());
 
-  size_t index = 0;
   for (const auto & interface : params_.reference_and_state_interfaces)
   {
     for (const auto & dof_name : reference_and_state_dof_names_)
     {
-      reference_interfaces.push_back(hardware_interface::CommandInterface(
-        get_node()->get_name(), dof_name + "/" + interface, &reference_interfaces_[index]));
-      ++index;
+      reference_interfaces.push_back(hardware_interface::CommandInterface(InterfaceDescription(
+        get_node()->get_name(), InterfaceInfo(dof_name + "/" + interface, "double"))));
     }
   }
 
@@ -380,8 +380,10 @@ controller_interface::CallbackReturn PidController::on_activate(
   reset_controller_measured_state_msg(
     *(measured_state_.readFromRT()), reference_and_state_dof_names_);
 
-  reference_interfaces_.assign(
-    reference_interfaces_.size(), std::numeric_limits<double>::quiet_NaN());
+  for (auto & [name, interface] : reference_interfaces_ptrs_)
+  {
+    interface->set_value(std::numeric_limits<double>::quiet_NaN())
+  }
   measured_state_values_.assign(
     measured_state_values_.size(), std::numeric_limits<double>::quiet_NaN());
 
@@ -411,6 +413,10 @@ controller_interface::return_type PidController::update_reference_from_subscribe
 
       (*current_ref)->values[i] = std::numeric_limits<double>::quiet_NaN();
     }
+  }
+  for (auto & [name, reference_value] : ref_interface_to_value_)
+  {
+    reference_interfaces_ptrs_[name]->set_value(reference_value);
   }
   return controller_interface::return_type::OK;
 }

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "gmock/gmock.h"
+#include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "hardware_interface/loaned_state_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
@@ -37,6 +38,8 @@ using ControllerStateMsg =
   steering_controllers_library::SteeringControllersLibrary::AckermanControllerState;
 using ControllerReferenceMsg =
   steering_controllers_library::SteeringControllersLibrary::ControllerTwistReferenceMsg;
+using hardware_interface::InterfaceDescription;
+using hardware_interface::InterfaceInfo;
 
 // NOTE: Testing steering_controllers_library for ackermann vehicle configuration only
 
@@ -182,51 +185,43 @@ protected:
     }
 
     std::vector<hardware_interface::LoanedCommandInterface> command_ifs;
-    command_itfs_.reserve(joint_command_values_.size());
-    command_ifs.reserve(joint_command_values_.size());
+    command_itfs_.reserve(joint_command_size_);
+    command_ifs.reserve(joint_command_size_);
 
-    command_itfs_.emplace_back(hardware_interface::CommandInterface(
-      rear_wheels_names_[0], traction_interface_name_,
-      &joint_command_values_[CMD_TRACTION_RIGHT_WHEEL]));
+    command_itfs_.emplace_back(hardware_interface::CommandInterface(InterfaceDescription(
+      rear_wheels_names_[0], InterfaceInfo(traction_interface_name_, "1.1", "double"))));
     command_ifs.emplace_back(command_itfs_.back());
 
-    command_itfs_.emplace_back(hardware_interface::CommandInterface(
-      rear_wheels_names_[1], steering_interface_name_,
-      &joint_command_values_[CMD_TRACTION_LEFT_WHEEL]));
+    command_itfs_.emplace_back(hardware_interface::CommandInterface(InterfaceDescription(
+      rear_wheels_names_[1], InterfaceInfo(steering_interface_name_, "3.3", "double"))));
     command_ifs.emplace_back(command_itfs_.back());
 
-    command_itfs_.emplace_back(hardware_interface::CommandInterface(
-      front_wheels_names_[0], steering_interface_name_,
-      &joint_command_values_[CMD_STEER_RIGHT_WHEEL]));
+    command_itfs_.emplace_back(hardware_interface::CommandInterface(InterfaceDescription(
+      front_wheels_names_[0], InterfaceInfo(steering_interface_name_, "2.2", "double"))));
     command_ifs.emplace_back(command_itfs_.back());
 
-    command_itfs_.emplace_back(hardware_interface::CommandInterface(
-      front_wheels_names_[1], steering_interface_name_,
-      &joint_command_values_[CMD_STEER_LEFT_WHEEL]));
+    command_itfs_.emplace_back(hardware_interface::CommandInterface(InterfaceDescription(
+      front_wheels_names_[1], InterfaceInfo(steering_interface_name_, "4.4", "double"))));
     command_ifs.emplace_back(command_itfs_.back());
 
     std::vector<hardware_interface::LoanedStateInterface> state_ifs;
-    state_itfs_.reserve(joint_state_values_.size());
-    state_ifs.reserve(joint_state_values_.size());
+    state_itfs_.reserve(joint_state_size_);
+    state_ifs.reserve(joint_state_size_);
 
-    state_itfs_.emplace_back(hardware_interface::StateInterface(
-      rear_wheels_names_[0], traction_interface_name_,
-      &joint_state_values_[STATE_TRACTION_RIGHT_WHEEL]));
+    state_itfs_.emplace_back(hardware_interface::StateInterface(InterfaceDescription(
+      rear_wheels_names_[0], InterfaceInfo(traction_interface_name_, "0.5", "double"))));
     state_ifs.emplace_back(state_itfs_.back());
 
-    state_itfs_.emplace_back(hardware_interface::StateInterface(
-      rear_wheels_names_[1], traction_interface_name_,
-      &joint_state_values_[STATE_TRACTION_LEFT_WHEEL]));
+    state_itfs_.emplace_back(hardware_interface::StateInterface(InterfaceDescription(
+      rear_wheels_names_[1], InterfaceInfo(traction_interface_name_, "0.5", "double"))));
     state_ifs.emplace_back(state_itfs_.back());
 
-    state_itfs_.emplace_back(hardware_interface::StateInterface(
-      front_wheels_names_[0], steering_interface_name_,
-      &joint_state_values_[STATE_STEER_RIGHT_WHEEL]));
+    state_itfs_.emplace_back(hardware_interface::StateInterface(InterfaceDescription(
+      front_wheels_names_[0], InterfaceInfo(steering_interface_name_, "0.0", "double"))));
     state_ifs.emplace_back(state_itfs_.back());
 
-    state_itfs_.emplace_back(hardware_interface::StateInterface(
-      front_wheels_names_[1], steering_interface_name_,
-      &joint_state_values_[STATE_STEER_LEFT_WHEEL]));
+    state_itfs_.emplace_back(hardware_interface::StateInterface(InterfaceDescription(
+      front_wheels_names_[1], InterfaceInfo(steering_interface_name_, "0.0", "double"))));
     state_ifs.emplace_back(state_itfs_.back());
 
     controller_->assign_interfaces(std::move(command_ifs), std::move(state_ifs));
@@ -322,8 +317,8 @@ protected:
   double front_wheels_radius_ = 0.45;
   double rear_wheels_radius_ = 0.45;
 
-  std::array<double, 4> joint_state_values_ = {0.5, 0.5, 0.0, 0.0};
-  std::array<double, 4> joint_command_values_ = {1.1, 3.3, 2.2, 4.4};
+  const size_t joint_state_size_ = 4;
+  const size_t joint_command_size_ = 4;
 
   std::array<std::string, 2> joint_reference_interfaces_ = {"linear/velocity", "angular/position"};
   std::string steering_interface_name_ = "position";

@@ -24,8 +24,11 @@
 
 #include "gmock/gmock.h"
 
+#include "hardware_interface/hardware_info.hpp"
 #include "imu_sensor_broadcaster/imu_sensor_broadcaster.hpp"
 
+using hardware_interface::InterfaceDescription;
+using hardware_interface::InterfaceInfo;
 // subclassing and friending so we can access member variables
 class FriendIMUSensorBroadcaster : public imu_sensor_broadcaster::IMUSensorBroadcaster
 {
@@ -56,25 +59,25 @@ protected:
   const std::string frame_id_ = "imu_sensor_frame";
   std::array<double, 10> sensor_values_ = {1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.10};
   hardware_interface::StateInterface imu_orientation_x_{
-    sensor_name_, "orientation.x", &sensor_values_[0]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("orientation.x", "1.1", "double"))};
   hardware_interface::StateInterface imu_orientation_y_{
-    sensor_name_, "orientation.y", &sensor_values_[1]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("orientation.y", "2.2", "double"))};
   hardware_interface::StateInterface imu_orientation_z_{
-    sensor_name_, "orientation.z", &sensor_values_[2]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("orientation.z", "3.3", "double"))};
   hardware_interface::StateInterface imu_orientation_w_{
-    sensor_name_, "orientation.w", &sensor_values_[3]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("orientation.w", "4.4", "double"))};
   hardware_interface::StateInterface imu_angular_velocity_x_{
-    sensor_name_, "angular_velocity.x", &sensor_values_[4]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("angular_velocity.x", "5.5", "double"))};
   hardware_interface::StateInterface imu_angular_velocity_y_{
-    sensor_name_, "angular_velocity.y", &sensor_values_[5]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("angular_velocity.y", "6.6", "double"))};
   hardware_interface::StateInterface imu_angular_velocity_z_{
-    sensor_name_, "angular_velocity.z", &sensor_values_[6]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("angular_velocity.z", "7.7", "double"))};
   hardware_interface::StateInterface imu_linear_acceleration_x_{
-    sensor_name_, "linear_acceleration.x", &sensor_values_[7]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("linear_acceleration.x", "8.8", "double"))};
   hardware_interface::StateInterface imu_linear_acceleration_y_{
-    sensor_name_, "linear_acceleration.y", &sensor_values_[8]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("linear_acceleration.y", "9.9", "double"))};
   hardware_interface::StateInterface imu_linear_acceleration_z_{
-    sensor_name_, "linear_acceleration.z", &sensor_values_[9]};
+    InterfaceDescription(sensor_name_, InterfaceInfo("linear_acceleration.z", "10.10", "double"))};
 
   std::unique_ptr<FriendIMUSensorBroadcaster> imu_broadcaster_;
 
