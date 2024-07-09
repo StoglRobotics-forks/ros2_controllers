@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <functional>
+#include <iostream>
 #include <memory>
 
 #include <string>
@@ -116,12 +117,34 @@ JointTrajectoryController::state_interface_configuration() const
       conf.names.push_back(joint_name + "/" + interface_type);
     }
   }
+  if (params_.exchange_scaling_factor_with_hardware)
+  {
+    conf.names.push_back(params_.speed_scaling_interface_name);
+  }
   return conf;
 }
 
 controller_interface::return_type JointTrajectoryController::update(
   const rclcpp::Time & time, const rclcpp::Duration & period)
 {
+  if (params_.exchange_scaling_factor_with_hardware)
+  {
+    if (state_interfaces_.back().get_name() == params_.speed_scaling_interface_name)
+    {
+      scaling_factor_ = state_interfaces_.back().get_value();
+    }
+    else
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(), "Speed scaling interface (%s) not found in hardware interface.",
+        params_.speed_scaling_interface_name.c_str());
+    }
+  }
+  else
+  {
+    scaling_factor_ = *(scaling_factor_rt_buff_.readFromRT());
+  }
+
   if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
   {
     return controller_interface::return_type::OK;
@@ -164,6 +187,18 @@ controller_interface::return_type JointTrajectoryController::update(
   // currently carrying out a trajectory
   if (has_active_trajectory())
   {
+    // Adjust time with scaling factor
+    TimeData time_data;
+    time_data.time = time;
+    rcl_duration_value_t t_period = (time_data.time - time_data_.readFromRT()->time).nanoseconds();
+    // explicitly cast
+    time_data.period = rclcpp::Duration::from_nanoseconds(
+      static_cast<int64_t>(scaling_factor_ * static_cast<double>(t_period)));
+    time_data.uptime = time_data_.readFromRT()->uptime + time_data.period;
+    rclcpp::Time traj_time =
+      time_data_.readFromRT()->uptime + rclcpp::Duration::from_nanoseconds(t_period);
+    time_data_.writeFromNonRT(time_data);
+
     bool first_sample = false;
     // if sampling the first time, set the point before you sample
     if (!traj_external_point_ptr_->is_sampled_already())
@@ -172,19 +207,19 @@ controller_interface::return_type JointTrajectoryController::update(
       if (params_.open_loop_control)
       {
         traj_external_point_ptr_->set_point_before_trajectory_msg(
-          time, last_commanded_state_, joints_angle_wraparound_);
+          traj_time, last_commanded_state_, joints_angle_wraparound_);
       }
       else
       {
         traj_external_point_ptr_->set_point_before_trajectory_msg(
-          time, state_current_, joints_angle_wraparound_);
+          traj_time, state_current_, joints_angle_wraparound_);
       }
     }
 
     // find segment for current timestamp
     TrajectoryPointConstIter start_segment_itr, end_segment_itr;
     const bool valid_point = traj_external_point_ptr_->sample(
-      time, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr);
+      traj_time, interpolation_method_, state_desired_, start_segment_itr, end_segment_itr);
 
     if (valid_point)
     {
@@ -866,9 +901,23 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
   resize_joint_trajectory_point(state_error_, dof_);
   resize_joint_trajectory_point(last_commanded_state_, dof_);
 
+  // create services
   query_state_srv_ = get_node()->create_service<control_msgs::srv::QueryTrajectoryState>(
     std::string(get_node()->get_name()) + "/query_state",
     std::bind(&JointTrajectoryController::query_state_service, this, _1, _2));
+
+  set_scaling_factor_srv_ = get_node()->create_service<control_msgs::srv::SetScalingFactor>(
+    "~/set_scaling_factor", std::bind(
+                              &JointTrajectoryController::set_scaling_factor, this,
+                              std::placeholders::_1, std::placeholders::_2));
+  
+  get_scaling_factor_srv_ = get_node()->create_service<control_msgs::srv::GetScalingFactor>(
+    "~/get_scaling_factor", std::bind(
+                              &JointTrajectoryController::get_scaling_factor, this,
+                              std::placeholders::_1, std::placeholders::_2));
+
+  // set scaling factor to low value default
+  scaling_factor_rt_buff_.writeFromNonRT(params_.scaling_factor_initial_default);
 
   return CallbackReturn::SUCCESS;
 }
@@ -880,12 +929,17 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
 
   // update the dynamic map parameters
   param_listener_->refresh_dynamic_parameters();
-
   // get parameters from the listener in case they were updated
   params_ = param_listener_->get_params();
-
   // parse remaining parameters
   default_tolerances_ = get_segment_tolerances(logger, params_);
+
+  // Setup time_data buffer used for scaling
+  TimeData time_data;
+  time_data.time = get_node()->now();
+  time_data.period = rclcpp::Duration::from_nanoseconds(0);
+  time_data.uptime = get_node()->now();
+  time_data_.initRT(time_data);
 
   // order all joints in the storage
   for (const auto & interface : params_.command_interfaces)
@@ -1561,6 +1615,33 @@ void JointTrajectoryController::resize_joint_trajectory_point_command(
   {
     point.effort.resize(size, 0.0);
   }
+}
+
+bool JointTrajectoryController::set_scaling_factor(
+  control_msgs::srv::SetScalingFactor::Request::SharedPtr req,
+  control_msgs::srv::SetScalingFactor::Response::SharedPtr resp)
+{
+  if (req->scaling_factor < 0 || req->scaling_factor > 1)
+  {
+    RCLCPP_WARN(
+      get_node()->get_logger(), "Scaling factor has to be in range [0, 1]. Ignoring input!");
+    resp->success = false;
+    return true;
+  }
+
+  RCLCPP_INFO(get_node()->get_logger(), "New scaling factor will be %f", req->scaling_factor);
+  scaling_factor_rt_buff_.writeFromNonRT(req->scaling_factor);
+  resp->success = true;
+  return true;
+}
+
+bool JointTrajectoryController::get_scaling_factor(
+  control_msgs::srv::GetScalingFactor::Request::SharedPtr /*req*/,
+  control_msgs::srv::GetScalingFactor::Response::SharedPtr resp)
+{
+  resp->scaling_factor = *(scaling_factor_rt_buff_.readFromNonRT());
+  resp->success = true;
+  return true;
 }
 
 bool JointTrajectoryController::has_active_trajectory() const
