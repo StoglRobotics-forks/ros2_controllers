@@ -117,6 +117,15 @@ controller_interface::return_type AdmittanceRule::reset(const size_t num_joints)
   return controller_interface::return_type::OK;
 }
 
+geometry_msgs::msg::Pose AdmittanceRule::initialize_goal_pose(
+  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state)
+{
+  kinematics_->calculate_link_transform(
+    current_joint_state.positions, parameters_.ft_sensor.frame.id,
+    admittance_transforms_.ref_base_ft_);
+  return tf2::toMsg(admittance_transforms_.ref_base_ft_);
+}
+
 void AdmittanceRule::apply_parameters_update()
 {
   if (parameter_handler_->is_old(parameters_))
@@ -138,14 +147,14 @@ void AdmittanceRule::apply_parameters_update()
   }
 }
 
+
 bool AdmittanceRule::get_all_transforms(
   const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
-  const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state)
+  const geometry_msgs::msg::Pose & reference_pose)
 {
-  // get reference transforms
-  bool success = kinematics_->calculate_link_transform(
-    reference_joint_state.positions, parameters_.ft_sensor.frame.id,
-    admittance_transforms_.ref_base_ft_);
+  // get reference transforms 
+  bool success=true;  
+  tf2::fromMsg(reference_pose, admittance_transforms_.ref_base_ft_);
 
   // get transforms at current configuration
   success &= kinematics_->calculate_link_transform(
@@ -169,7 +178,8 @@ bool AdmittanceRule::get_all_transforms(
 controller_interface::return_type AdmittanceRule::update(
   const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
   const geometry_msgs::msg::Wrench & measured_wrench,
-  const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state,
+  const geometry_msgs::msg::Pose & reference_pose,
+  const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state, 
   const rclcpp::Duration & period, trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_state)
 {
   const double dt = period.seconds();
@@ -178,9 +188,7 @@ controller_interface::return_type AdmittanceRule::update(
   {
     apply_parameters_update();
   }
-
-  bool success = get_all_transforms(current_joint_state, reference_joint_state);
-
+  bool success = get_all_transforms(current_joint_state, reference_pose);
   // apply filter and update wrench_world_ vector
   Eigen::Matrix<double, 3, 3> rot_world_sensor =
     admittance_transforms_.world_base_.rotation() * admittance_transforms_.base_ft_.rotation();

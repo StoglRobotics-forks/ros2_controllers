@@ -404,8 +404,17 @@ controller_interface::return_type AdmittanceController::update_and_write_command
   // get all controller inputs
   read_state_from_hardware(joint_state_, ft_values_);
 
+  auto goal_pose = geometry_msgs::msg::Pose();
+  /*   world-tool0*/
+  goal_pose.position.x = 1.53;
+  goal_pose.position.y = 0.9;
+  goal_pose.position.z = 1.5;
+  goal_pose.orientation.w = 0.0;
+  goal_pose.orientation.x = 0.707;
+  goal_pose.orientation.y = 0.0;
+  goal_pose.orientation.z = 0.707;
   // apply admittance control to reference to determine desired state
-  admittance_->update(joint_state_, ft_values_, reference_, period, reference_admittance_);
+  admittance_->update(joint_state_, ft_values_, goal_pose, reference_, period, reference_admittance_);
 
   // write calculated values to joint interfaces
   write_state_to_hardware(reference_admittance_);
