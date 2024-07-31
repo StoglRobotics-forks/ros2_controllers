@@ -29,6 +29,7 @@
 #include "kinematics_interface/kinematics_interface.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
+#include "geometry_msgs/msg/pose.hpp"
 
 namespace admittance_controller
 {
@@ -111,13 +112,14 @@ public:
   /**
    * Calculate all transforms needed for admittance control using the loader kinematics plugin. If
    * the transform does not exist in the kinematics model, then TF will be used for lookup. The
-   * return value is true if all transformation are calculated without an error \param[in]
-   * current_joint_state current joint state of the robot \param[in] reference_joint_state input
-   * joint state reference \param[out] success true if no calls to the kinematics interface fail
+   * return value is true if all transformation are calculated without an error 
+   * \param[in] current_joint_state current joint state of the robot 
+   * \param[in] reference_pose input ft sensor reference pose
+   * \param[out] success true if no calls to the kinematics interface fail
    */
   bool get_all_transforms(
     const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
-    const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state);
+    const geometry_msgs::msg::Pose & reference_pose);
 
   /**
    * Updates parameter_ struct if any parameters have changed since last update. Parameter dependent
@@ -132,7 +134,7 @@ public:
    *
    * \param[in] current_joint_state current joint state of the robot
    * \param[in] measured_wrench most recent measured wrench from force torque sensor
-   * \param[in] reference_joint_state input joint state reference
+   * \param[in] reference_pose input joint state reference
    * \param[in] period time in seconds since last controller update
    * \param[out] desired_joint_state joint state reference after the admittance offset is applied to
    * the input reference
@@ -140,6 +142,7 @@ public:
   controller_interface::return_type update(
     const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
     const geometry_msgs::msg::Wrench & measured_wrench,
+    const geometry_msgs::msg::Pose & reference_pose,
     const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state,
     const rclcpp::Duration & period,
     trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_states);
@@ -151,6 +154,14 @@ public:
    * robot state, among other things
    */
   const control_msgs::msg::AdmittanceControllerState & get_controller_state();
+
+  /**
+   * Explanation - uses kinematics
+   *
+   * \param[in] state_message message
+   * \param[out] state_message message
+   */
+  geometry_msgs::msg::Pose initialize_goal_pose(const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state);
 
 public:
   // admittance config parameters
