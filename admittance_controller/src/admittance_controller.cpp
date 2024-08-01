@@ -267,10 +267,10 @@ controller_interface::CallbackReturn AdmittanceController::on_configure(
       "~/joint_references", rclcpp::SystemDefaultsQoS(), joint_command_callback);
 
   auto goal_pose_callback =
-    [this](const std::shared_ptr<geometry_msgs::msg::Pose> msg)
+    [this](const std::shared_ptr<geometry_msgs::msg::PoseStamped> msg)
   { input_goal_pose_.writeFromNonRT(msg); };
   input_goal_pose_subscriber_ =
-    get_node()->create_subscription<geometry_msgs::msg::Pose>(
+    get_node()->create_subscription<geometry_msgs::msg::PoseStamped>(
       "~/goal_pose", rclcpp::SystemDefaultsQoS(), goal_pose_callback);
 
   s_publisher_ = get_node()->create_publisher<control_msgs::msg::AdmittanceControllerState>(
@@ -354,10 +354,8 @@ controller_interface::CallbackReturn AdmittanceController::on_activate(
       return controller_interface::CallbackReturn::ERROR;
     }
   }
-
-  goal_pose_msg_ = std::make_shared<geometry_msgs::msg::Pose>(
-    admittance_->initialize_goal_pose(joint_state_)
-    );
+  goal_pose_msg_ = std::make_shared<geometry_msgs::msg::PoseStamped>();
+  goal_pose_msg_->pose = admittance_->initialize_goal_pose(joint_state_);
   if(!goal_pose_msg_){
     RCLCPP_ERROR(get_node()->get_logger(), "Failed to initialize goal_pose from current joint positions.\n");
     return controller_interface::CallbackReturn::ERROR;
