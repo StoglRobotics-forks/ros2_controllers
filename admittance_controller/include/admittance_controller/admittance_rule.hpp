@@ -30,6 +30,7 @@
 #include "pluginlib/class_loader.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
 #include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 
 namespace admittance_controller
 {
@@ -119,7 +120,7 @@ public:
    */
   bool get_all_transforms(
     const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
-    const geometry_msgs::msg::Pose & reference_pose);
+    const geometry_msgs::msg::PoseStamped & reference_pose);
 
   /**
    * Updates parameter_ struct if any parameters have changed since last update. Parameter dependent
@@ -142,7 +143,7 @@ public:
   controller_interface::return_type update(
     const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
     const geometry_msgs::msg::Wrench & measured_wrench,
-    const geometry_msgs::msg::Pose & reference_pose,
+    const geometry_msgs::msg::PoseStamped & reference_pose,
     const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state,
     const rclcpp::Duration & period,
     trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_states);

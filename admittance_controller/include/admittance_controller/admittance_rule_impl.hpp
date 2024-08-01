@@ -156,11 +156,11 @@ void AdmittanceRule::apply_parameters_update()
 
 bool AdmittanceRule::get_all_transforms(
   const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
-  const geometry_msgs::msg::Pose & reference_pose)
+  const geometry_msgs::msg::PoseStamped & reference_pose)
 {
   // get reference transforms 
   bool success=true;  
-  tf2::fromMsg(reference_pose, admittance_transforms_.ref_base_ft_);
+  tf2::fromMsg(reference_pose.pose, admittance_transforms_.ref_base_ft_);
 
   // get transforms at current configuration
   success &= kinematics_->calculate_link_transform(
@@ -184,7 +184,7 @@ bool AdmittanceRule::get_all_transforms(
 controller_interface::return_type AdmittanceRule::update(
   const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
   const geometry_msgs::msg::Wrench & measured_wrench,
-  const geometry_msgs::msg::Pose & reference_pose,
+  const geometry_msgs::msg::PoseStamped & reference_pose,
   const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state, 
   const rclcpp::Duration & period, trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_state)
 {
