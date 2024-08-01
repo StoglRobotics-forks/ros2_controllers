@@ -265,6 +265,14 @@ controller_interface::CallbackReturn AdmittanceController::on_configure(
   input_joint_command_subscriber_ =
     get_node()->create_subscription<trajectory_msgs::msg::JointTrajectoryPoint>(
       "~/joint_references", rclcpp::SystemDefaultsQoS(), joint_command_callback);
+
+  auto goal_pose_callback =
+    [this](const std::shared_ptr<geometry_msgs::msg::Pose> msg)
+  { input_goal_pose_.writeFromNonRT(msg); };
+  input_goal_pose_subscriber_ =
+    get_node()->create_subscription<geometry_msgs::msg::Pose>(
+      "~/goal_pose", rclcpp::SystemDefaultsQoS(), goal_pose_callback);
+
   s_publisher_ = get_node()->create_publisher<control_msgs::msg::AdmittanceControllerState>(
     "~/status", rclcpp::SystemDefaultsQoS());
   state_publisher_ =
@@ -347,6 +355,14 @@ controller_interface::CallbackReturn AdmittanceController::on_activate(
     }
   }
 
+  goal_pose_msg_ = std::make_shared<geometry_msgs::msg::Pose>(
+    admittance_->initialize_goal_pose(joint_state_)
+    );
+  if(!goal_pose_msg_){
+    RCLCPP_ERROR(get_node()->get_logger(), "Failed to initialize goal_pose from current joint positions.\n");
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
   // Use current joint_state as a default reference
   last_reference_ = joint_state_;
   last_commanded_ = joint_state_;
@@ -380,6 +396,14 @@ controller_interface::return_type AdmittanceController::update_reference_from_su
     }
   }
 
+  // after initializing goal_pose_msg_, update it from subscribers only
+  // if another message exists
+  if(*input_goal_pose_.readFromRT())
+  {
+    goal_pose_msg_ = *input_goal_pose_.readFromRT();
+  }
+
+
   return controller_interface::return_type::OK;
 }
 
@@ -404,17 +428,8 @@ controller_interface::return_type AdmittanceController::update_and_write_command
   // get all controller inputs
   read_state_from_hardware(joint_state_, ft_values_);
 
-  auto goal_pose = geometry_msgs::msg::Pose();
-  /*   world-tool0*/
-  goal_pose.position.x = 1.53;
-  goal_pose.position.y = 0.9;
-  goal_pose.position.z = 1.5;
-  goal_pose.orientation.w = 0.0;
-  goal_pose.orientation.x = 0.707;
-  goal_pose.orientation.y = 0.0;
-  goal_pose.orientation.z = 0.707;
   // apply admittance control to reference to determine desired state
-  admittance_->update(joint_state_, ft_values_, goal_pose, reference_, period, reference_admittance_);
+  admittance_->update(joint_state_, ft_values_, *goal_pose_msg_, reference_, period, reference_admittance_);
 
   // write calculated values to joint interfaces
   write_state_to_hardware(reference_admittance_);
