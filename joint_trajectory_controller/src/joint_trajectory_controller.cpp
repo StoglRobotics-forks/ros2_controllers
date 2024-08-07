@@ -924,17 +924,17 @@ controller_interface::CallbackReturn JointTrajectoryController::on_activate(
   // running already)
   trajectory_msgs::msg::JointTrajectoryPoint state;
   resize_joint_trajectory_point(state, dof_);
-  if (read_state_from_command_interfaces(state))
-  {
-    state_current_ = state;
-    last_commanded_state_ = state;
-  }
-  else
-  {
+  // if (read_state_from_command_interfaces(state))
+  // {
+  //   state_current_ = state;
+  //   last_commanded_state_ = state;
+  // }
+  // else
+  // {
     // Initialize current state storage from hardware
     read_state_from_state_interfaces(state_current_);
     read_state_from_state_interfaces(last_commanded_state_);
-  }
+  // }
 
   // The controller should start by holding position at the beginning of active state
   add_new_trajectory_msg(set_hold_position());
