@@ -114,8 +114,12 @@ protected:
   rclcpp::Publisher<ControllerStateMsg>::SharedPtr s_publisher_;
   std::unique_ptr<ControllerStatePublisher> state_publisher_;
 
+  std::vector<hardware_interface::InterfaceDescription> export_state_interface_descriptions()
+    override;
+
   // override methods from ChainableControllerInterface
-  std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
+  std::vector<hardware_interface::InterfaceDescription> export_reference_interface_descriptions()
+    override;
 
   bool on_set_chained_mode(bool chained_mode) override;
 

@@ -414,7 +414,7 @@ void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectory
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value<double><double>();
     }
   };
 
@@ -453,7 +453,7 @@ bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajecto
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value<double>();
     }
   };
 
@@ -461,7 +461,7 @@ bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajecto
   {
     return std::find_if(
              joint_interface.begin(), joint_interface.end(), [](const auto & interface)
-             { return std::isnan(interface.get().get_value()); }) == joint_interface.end();
+             { return std::isnan(interface.get().get_value<double>()); }) == joint_interface.end();
   };
 
   // Assign values from the command interfaces as state. Therefore needs check for both.
@@ -523,7 +523,7 @@ bool JointTrajectoryController::read_commands_from_command_interfaces(
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value<double>();
     }
   };
 
@@ -531,7 +531,7 @@ bool JointTrajectoryController::read_commands_from_command_interfaces(
   {
     return std::find_if(
              joint_interface.begin(), joint_interface.end(), [](const auto & interface)
-             { return std::isnan(interface.get().get_value()); }) == joint_interface.end();
+             { return std::isnan(interface.get().get_value<double>()); }) == joint_interface.end();
   };
 
   // Assign values from the command interfaces as command.
@@ -983,7 +983,7 @@ controller_interface::CallbackReturn JointTrajectoryController::on_deactivate(
     if (has_position_command_interface_)
     {
       joint_command_interface_[0][index].get().set_value(
-        joint_command_interface_[0][index].get().get_value());
+        joint_command_interface_[0][index].get().get_value<double>());
     }
 
     if (has_velocity_command_interface_)
@@ -1248,15 +1248,15 @@ void JointTrajectoryController::fill_partial_goal(
         {
           if (
             has_position_command_interface_ &&
-            !std::isnan(joint_command_interface_[0][index].get().get_value()))
+            !std::isnan(joint_command_interface_[0][index].get().get_value<double>()))
           {
             // copy last command if cmd interface exists
-            it.positions.push_back(joint_command_interface_[0][index].get().get_value());
+            it.positions.push_back(joint_command_interface_[0][index].get().get_value<double>());
           }
           else if (has_position_state_interface_)
           {
             // copy current state if state interface exists
-            it.positions.push_back(joint_state_interface_[0][index].get().get_value());
+            it.positions.push_back(joint_state_interface_[0][index].get().get_value<double>());
           }
         }
         if (!it.velocities.empty())

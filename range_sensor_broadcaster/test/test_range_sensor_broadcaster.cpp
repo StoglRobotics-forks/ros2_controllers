@@ -208,7 +208,7 @@ TEST_F(RangeSensorBroadcasterTest, Publish_RangeBroadcaster_Success)
   subscribe_and_get_message(range_msg);
 
   EXPECT_EQ(range_msg.header.frame_id, frame_id_);
-  EXPECT_THAT(range_msg.range, ::testing::FloatEq(sensor_range_));
+  EXPECT_THAT(range_msg.range, ::testing::FloatEq(range_.get_value<double>()));
   EXPECT_EQ(range_msg.radiation_type, radiation_type_);
   EXPECT_THAT(range_msg.field_of_view, ::testing::FloatEq(field_of_view_));
   EXPECT_THAT(range_msg.min_range, ::testing::FloatEq(min_range_));
@@ -227,11 +227,11 @@ TEST_F(RangeSensorBroadcasterTest, Publish_Bandaries_RangeBroadcaster_Success)
 
   sensor_msgs::msg::Range range_msg;
 
-  sensor_range_ = 0.10;
+  range_.set_value(0.10);
   subscribe_and_get_message(range_msg);
 
   EXPECT_EQ(range_msg.header.frame_id, frame_id_);
-  EXPECT_THAT(range_msg.range, ::testing::FloatEq(sensor_range_));
+  EXPECT_THAT(range_msg.range, ::testing::FloatEq(range_.get_value<double>()));
   EXPECT_EQ(range_msg.radiation_type, radiation_type_);
   EXPECT_THAT(range_msg.field_of_view, ::testing::FloatEq(field_of_view_));
   EXPECT_THAT(range_msg.min_range, ::testing::FloatEq(min_range_));
@@ -240,11 +240,11 @@ TEST_F(RangeSensorBroadcasterTest, Publish_Bandaries_RangeBroadcaster_Success)
   EXPECT_THAT(range_msg.variance, ::testing::FloatEq(variance_));
 #endif
 
-  sensor_range_ = 4.0;
+  range_.set_value(4.0);
   subscribe_and_get_message(range_msg);
 
   EXPECT_EQ(range_msg.header.frame_id, frame_id_);
-  EXPECT_THAT(range_msg.range, ::testing::FloatEq(sensor_range_));
+  EXPECT_THAT(range_msg.range, ::testing::FloatEq(range_.get_value<double>()));
   EXPECT_EQ(range_msg.radiation_type, radiation_type_);
   EXPECT_THAT(range_msg.field_of_view, ::testing::FloatEq(field_of_view_));
   EXPECT_THAT(range_msg.min_range, ::testing::FloatEq(min_range_));
@@ -263,12 +263,12 @@ TEST_F(RangeSensorBroadcasterTest, Publish_OutOfBandaries_RangeBroadcaster_Succe
 
   sensor_msgs::msg::Range range_msg;
 
-  sensor_range_ = 0.0;
+  range_.set_value(0.0);
   subscribe_and_get_message(range_msg);
 
   EXPECT_EQ(range_msg.header.frame_id, frame_id_);
   // Even out of boundaries you will get the out_of_range range value
-  EXPECT_THAT(range_msg.range, ::testing::FloatEq(sensor_range_));
+  EXPECT_THAT(range_msg.range, ::testing::FloatEq(range_.get_value<double>()));
   EXPECT_EQ(range_msg.radiation_type, radiation_type_);
   EXPECT_THAT(range_msg.field_of_view, ::testing::FloatEq(field_of_view_));
   EXPECT_THAT(range_msg.min_range, ::testing::FloatEq(min_range_));
@@ -277,12 +277,12 @@ TEST_F(RangeSensorBroadcasterTest, Publish_OutOfBandaries_RangeBroadcaster_Succe
   EXPECT_THAT(range_msg.variance, ::testing::FloatEq(variance_));
 #endif
 
-  sensor_range_ = 6.0;
+  range_.set_value(6.0);
   subscribe_and_get_message(range_msg);
 
   EXPECT_EQ(range_msg.header.frame_id, frame_id_);
   // Even out of boundaries you will get the out_of_range range value
-  EXPECT_THAT(range_msg.range, ::testing::FloatEq(sensor_range_));
+  EXPECT_THAT(range_msg.range, ::testing::FloatEq(range_.get_value<double>()));
   EXPECT_EQ(range_msg.radiation_type, radiation_type_);
   EXPECT_THAT(range_msg.field_of_view, ::testing::FloatEq(field_of_view_));
   EXPECT_THAT(range_msg.min_range, ::testing::FloatEq(min_range_));

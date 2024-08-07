@@ -25,6 +25,7 @@
 
 #include "gmock/gmock.h"
 
+#include "hardware_interface/hardware_info.hpp"
 #include "range_sensor_broadcaster/range_sensor_broadcaster.hpp"
 
 class RangeSensorBroadcasterTest : public ::testing::Test
@@ -45,8 +46,8 @@ protected:
   const double max_range_ = 7.0;
   const double variance_ = 1.0;
 
-  double sensor_range_ = 3.1;
-  hardware_interface::StateInterface range_{sensor_name_, "range", &sensor_range_};
+  hardware_interface::StateInterface range_{hardware_interface::InterfaceDescription(
+    sensor_name_, hardware_interface::InterfaceInfo("range", "double", "3.1"))};
 
   std::unique_ptr<range_sensor_broadcaster::RangeSensorBroadcaster> range_broadcaster_;
 

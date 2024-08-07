@@ -346,24 +346,31 @@ controller_interface::InterfaceConfiguration PidController::state_interface_conf
   return state_interfaces_config;
 }
 
-std::vector<hardware_interface::CommandInterface> PidController::on_export_reference_interfaces()
+std::vector<hardware_interface::InterfaceDescription>
+PidController::export_state_interface_descriptions()
 {
-  reference_interfaces_.resize(
-    dof_ * params_.reference_and_state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
+  // does not export any StateInterfaces
+  return {};
+}
 
-  std::vector<hardware_interface::CommandInterface> reference_interfaces;
-  reference_interfaces.reserve(reference_interfaces_.size());
+std::vector<hardware_interface::InterfaceDescription>
+PidController::export_reference_interface_descriptions()
+{
+  reference_interfaces_.reserve(dof_ * params_.reference_and_state_interfaces.size());
+
+  std::vector<hardware_interface::InterfaceDescription> reference_interfaces_descr;
+  reference_interfaces_descr.reserve(reference_interfaces_.size());
 
   for (const auto & interface : params_.reference_and_state_interfaces)
   {
     for (const auto & dof_name : reference_and_state_dof_names_)
     {
-      reference_interfaces.push_back(hardware_interface::CommandInterface(InterfaceDescription(
-        get_node()->get_name(), InterfaceInfo(dof_name + "/" + interface, "double"))));
+      reference_interfaces_descr.emplace_back(
+        (get_node()->get_name(), InterfaceInfo(dof_name + "/" + interface, "double")));
     }
   }
 
-  return reference_interfaces;
+  return reference_interfaces_descr;
 }
 
 bool PidController::on_set_chained_mode(bool chained_mode)

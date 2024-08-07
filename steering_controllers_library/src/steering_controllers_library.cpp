@@ -311,20 +311,22 @@ SteeringControllersLibrary::state_interface_configuration() const
   return state_interfaces_config;
 }
 
-std::vector<hardware_interface::CommandInterface>
-SteeringControllersLibrary::on_export_reference_interfaces()
+std::vector<hardware_interface::InterfaceDescription>
+SteeringControllersLibrary::export_reference_interface_descriptions()
 {
-  std::vector<hardware_interface::CommandInterface> reference_interfaces;
+  using hardware_interface::InterfaceDescription;
+  using hardware_interface::InterfaceInfo;
+  std::vector<InterfaceDescription> reference_interfaces;
   reference_interfaces.reserve(nr_ref_itfs_);
 
-  reference_interfaces.push_back(hardware_interface::CommandInterface(InterfaceDescription(
+  reference_interfaces.emplace_back(InterfaceDescription(
     get_node()->get_name(),
-    InterfaceInfo(std::string("linear/") + hardware_interface::HW_IF_VELOCITY, "double"))));
+    InterfaceInfo(std::string("linear/") + hardware_interface::HW_IF_VELOCITY, "double")));
   lin_ref_itf_ = reference_interfaces.back().get_name();
 
-  reference_interfaces.push_back(hardware_interface::CommandInterface(InterfaceDescription(
+  reference_interfaces.emplace_back(InterfaceDescription(
     get_node()->get_name(),
-    InterfaceInfo(std::string("angular/") + hardware_interface::HW_IF_POSITION, "double"))));
+    InterfaceInfo(std::string("angular/") + hardware_interface::HW_IF_POSITION, "double")));
   ang_ref_itf_ = reference_interfaces.back().get_name();
 
   return reference_interfaces;
