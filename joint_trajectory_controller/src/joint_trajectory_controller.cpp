@@ -414,7 +414,7 @@ void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectory
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value<double><double>();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value<double>();
     }
   };
 

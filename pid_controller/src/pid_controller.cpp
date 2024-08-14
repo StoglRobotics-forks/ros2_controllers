@@ -126,21 +126,21 @@ controller_interface::CallbackReturn PidController::configure_parameters()
     return CallbackReturn::FAILURE;
   }
 
-  dof_ = params_.dof_names.size();
+  dof_names_ = params_.dof_names;
 
   // TODO(destogl): is this even possible? Test it...
-  if (params_.gains.dof_names_map.size() != dof_)
+  if (params_.gains.dof_names_map.size() != dof_names_.size())
   {
     RCLCPP_FATAL(
       get_node()->get_logger(),
       "Size of 'gains' (%zu) map and number or 'dof_names' (%zu) have to be the same!",
-      params_.gains.dof_names_map.size(), dof_);
+      params_.gains.dof_names_map.size(), dof_names_.size());
     return CallbackReturn::FAILURE;
   }
 
-  pids_.resize(dof_);
+  pids_.resize(dof_names_.size());
 
-  for (size_t i = 0; i < dof_; ++i)
+  for (size_t i = 0; i < dof_names_.size(); ++i)
   {
     // prefix should be interpreted as parameters prefix
     pids_[i] =
@@ -203,8 +203,13 @@ controller_interface::CallbackReturn PidController::on_configure(
   reset_controller_measured_state_msg(measured_state_msg, reference_and_state_dof_names_);
   measured_state_.writeFromNonRT(measured_state_msg);
 
-  measured_state_values_.resize(
-    dof_ * params_.reference_and_state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
+  for (const auto & dof_name : params_.reference_and_state_dof_names)
+  {
+    for (const auto & itf_name : params_.reference_and_state_interfaces)
+    {
+      measured_state_values_[dof_name + "/" + itf_name] = std::numeric_limits<double>::quiet_NaN();
+    }
+  }
 
   auto set_feedforward_control_callback =
     [&](
@@ -239,6 +244,25 @@ controller_interface::CallbackReturn PidController::on_configure(
       e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
+
+  if (
+    params_.reference_and_state_interfaces.size() == 0 ||
+    params_.reference_and_state_interfaces[0].empty())
+  {
+    RCLCPP_FATAL(
+      get_node()->get_logger(),
+      "No reference_and_state_interface name given. Need to give at least one.");
+    return controller_interface::CallbackReturn::ERROR;
+  }
+  itf_ = "/" + params_.reference_and_state_interfaces[0];
+
+  if (
+    params_.reference_and_state_interfaces.size() == 2 &&
+    !params_.reference_and_state_interfaces[1].empty())
+  {
+    itf_dot_ = "/" + params_.reference_and_state_interfaces[1];
+  }
+  node_name = std::string(get_node()->get_name()) + "/";
 
   // Reserve memory in state publisher
   state_publisher_->lock();
@@ -333,7 +357,8 @@ controller_interface::InterfaceConfiguration PidController::state_interface_conf
   {
     state_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
 
-    state_interfaces_config.names.reserve(dof_ * params_.reference_and_state_interfaces.size());
+    state_interfaces_config.names.reserve(
+      dof_names_.size() * params_.reference_and_state_interfaces.size());
     for (const auto & interface : params_.reference_and_state_interfaces)
     {
       for (const auto & dof_name : reference_and_state_dof_names_)
@@ -356,7 +381,7 @@ PidController::export_state_interface_descriptions()
 std::vector<hardware_interface::InterfaceDescription>
 PidController::export_reference_interface_descriptions()
 {
-  reference_interfaces_.reserve(dof_ * params_.reference_and_state_interfaces.size());
+  reference_interfaces_.reserve(dof_names_.size() * params_.reference_and_state_interfaces.size());
 
   std::vector<hardware_interface::InterfaceDescription> reference_interfaces_descr;
   reference_interfaces_descr.reserve(reference_interfaces_.size());
@@ -365,8 +390,9 @@ PidController::export_reference_interface_descriptions()
   {
     for (const auto & dof_name : reference_and_state_dof_names_)
     {
-      reference_interfaces_descr.emplace_back(
-        (get_node()->get_name(), InterfaceInfo(dof_name + "/" + interface, "double")));
+      reference_interfaces_descr.push_back(hardware_interface::InterfaceDescription(
+        get_node()->get_name(),
+        hardware_interface::InterfaceInfo(dof_name + "/" + interface, std::string("double"))));
     }
   }
 
@@ -387,12 +413,15 @@ controller_interface::CallbackReturn PidController::on_activate(
   reset_controller_measured_state_msg(
     *(measured_state_.readFromRT()), reference_and_state_dof_names_);
 
-  for (auto & [name, interface] : reference_interfaces_ptrs_)
+  for (auto & [name, interface] : reference_interfaces_)
   {
-    interface->set_value(std::numeric_limits<double>::quiet_NaN())
+    interface->set_value(std::numeric_limits<double>::quiet_NaN());
   }
-  measured_state_values_.assign(
-    measured_state_values_.size(), std::numeric_limits<double>::quiet_NaN());
+
+  for (const auto & [name, value] : measured_state_values_)
+  {
+    measured_state_values_[name] = std::numeric_limits<double>::quiet_NaN();
+  }
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -406,24 +435,24 @@ controller_interface::CallbackReturn PidController::on_deactivate(
 controller_interface::return_type PidController::update_reference_from_subscribers(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  auto current_ref = input_ref_.readFromRT();
+  auto current_ref = *input_ref_.readFromRT();
 
-  for (size_t i = 0; i < dof_; ++i)
+  for (size_t i = 0; i < reference_and_state_dof_names_.size(); ++i)
   {
-    if (!std::isnan((*current_ref)->values[i]))
+    if (!std::isnan(current_ref->values[i]))
     {
-      reference_interfaces_[i] = (*current_ref)->values[i];
-      if (reference_interfaces_.size() == 2 * dof_ && !std::isnan((*current_ref)->values_dot[i]))
+      const auto ref_itf = node_name + current_ref->dof_names[i] + itf_;
+      reference_interfaces_[ref_itf]->set_value(current_ref->values[i]);
+      if (
+        reference_interfaces_.size() == 2 * dof_names_.size() && !itf_dot_.empty() &&
+        !std::isnan(current_ref->values_dot[i]))
       {
-        reference_interfaces_[dof_ + i] = (*current_ref)->values_dot[i];
+        const auto ref_itf_dot = node_name + current_ref->dof_names[i] + itf_dot_;
+        reference_interfaces_[ref_itf_dot]->set_value(current_ref->values_dot[i]);
       }
 
-      (*current_ref)->values[i] = std::numeric_limits<double>::quiet_NaN();
+      current_ref->values[i] = std::numeric_limits<double>::quiet_NaN();
     }
-  }
-  for (auto & [name, reference_value] : ref_interface_to_value_)
-  {
-    reference_interfaces_ptrs_[name]->set_value(reference_value);
   }
   return controller_interface::return_type::OK;
 }
@@ -437,12 +466,16 @@ controller_interface::return_type PidController::update_and_write_commands(
   if (params_.use_external_measured_states)
   {
     const auto measured_state = *(measured_state_.readFromRT());
-    for (size_t i = 0; i < dof_; ++i)
+    for (size_t i = 0; i < reference_and_state_dof_names_.size(); ++i)
     {
-      measured_state_values_[i] = measured_state->values[i];
-      if (measured_state_values_.size() == 2 * dof_)
+      const auto itf_name = measured_state->dof_names[i] + itf_;
+      measured_state_values_[itf_name] = measured_state->values[i];
+      if (
+        measured_state_values_.size() == 2 * dof_names_.size() && !itf_dot_.empty() &&
+        !std::isnan(measured_state->values_dot[i]))
       {
-        measured_state_values_[dof_ + i] = measured_state->values_dot[i];
+        const auto itf_dot_name = measured_state->dof_names[i] + itf_dot_;
+        measured_state_values_[itf_dot_name] = measured_state->values_dot[i];
       }
     }
   }
@@ -450,21 +483,27 @@ controller_interface::return_type PidController::update_and_write_commands(
   {
     for (size_t i = 0; i < measured_state_values_.size(); ++i)
     {
-      measured_state_values_[i] = state_interfaces_[i].get_value();
+      measured_state_values_[state_interfaces_[i].get_name()] =
+        state_interfaces_[i].get_value<double>();
     }
   }
 
-  for (size_t i = 0; i < dof_; ++i)
+  for (size_t i = 0; i < dof_names_.size(); ++i)
   {
     double tmp_command = std::numeric_limits<double>::quiet_NaN();
-
+    const auto itf = reference_and_state_dof_names_[i] + itf_;
+    const auto itf_dot = reference_and_state_dof_names_[i] + itf_dot_;
+    const auto ref_itf = node_name + itf;
+    const auto ref_itf_dot = node_name + itf_dot;
     // Using feedforward
-    if (!std::isnan(reference_interfaces_[i]) && !std::isnan(measured_state_values_[i]))
+    if (
+      !std::isnan(reference_interfaces_[ref_itf]->get_value<double>()) &&
+      !std::isnan(measured_state_values_[itf]))
     {
       // calculate feed-forward
       if (*(control_mode_.readFromRT()) == feedforward_mode_type::ON)
       {
-        tmp_command = reference_interfaces_[dof_ + i] *
+        tmp_command = reference_interfaces_[ref_itf_dot]->get_value<double>() *
                       params_.gains.dof_names_map[params_.dof_names[i]].feedforward_gain;
       }
       else
@@ -472,24 +511,30 @@ controller_interface::return_type PidController::update_and_write_commands(
         tmp_command = 0.0;
       }
 
-      double error = reference_interfaces_[i] - measured_state_values_[i];
+      double error =
+        reference_interfaces_[ref_itf]->get_value<double>() - measured_state_values_[itf];
       if (params_.gains.dof_names_map[params_.dof_names[i]].angle_wraparound)
       {
         // for continuous angles the error is normalized between -pi<error<pi
-        error =
-          angles::shortest_angular_distance(measured_state_values_[i], reference_interfaces_[i]);
+        error = angles::shortest_angular_distance(
+          measured_state_values_[itf], reference_interfaces_[ref_itf]->get_value<double>());
       }
 
       // checking if there are two interfaces
-      if (reference_interfaces_.size() == 2 * dof_ && measured_state_values_.size() == 2 * dof_)
+      if (
+        reference_interfaces_.size() == 2 * dof_names_.size() &&
+        measured_state_values_.size() == 2 * dof_names_.size())
       {
         if (
-          !std::isnan(reference_interfaces_[dof_ + i]) &&
-          !std::isnan(measured_state_values_[dof_ + i]))
+          !std::isnan(reference_interfaces_[ref_itf_dot]->get_value<double>()) &&
+          !std::isnan(measured_state_values_[itf_dot]))
         {
           // use calculation with 'error' and 'error_dot'
           tmp_command += pids_[i]->computeCommand(
-            error, reference_interfaces_[dof_ + i] - measured_state_values_[dof_ + i], period);
+            error,
+            reference_interfaces_[ref_itf_dot]->get_value<double>() -
+              measured_state_values_[itf_dot],
+            period);
         }
         else
         {
@@ -511,31 +556,40 @@ controller_interface::return_type PidController::update_and_write_commands(
   if (state_publisher_ && state_publisher_->trylock())
   {
     state_publisher_->msg_.header.stamp = time;
-    for (size_t i = 0; i < dof_; ++i)
+    for (size_t i = 0; i < dof_names_.size(); ++i)
     {
-      state_publisher_->msg_.dof_states[i].reference = reference_interfaces_[i];
-      state_publisher_->msg_.dof_states[i].feedback = measured_state_values_[i];
-      if (reference_interfaces_.size() == 2 * dof_ && measured_state_values_.size() == 2 * dof_)
+      const auto itf = reference_and_state_dof_names_[i] + itf_;
+      const auto itf_dot = reference_and_state_dof_names_[i] + itf_dot_;
+      const auto ref_itf = node_name + itf;
+      const auto ref_itf_dot = node_name + itf_dot;
+      state_publisher_->msg_.dof_states[i].reference =
+        reference_interfaces_[ref_itf]->get_value<double>();
+      state_publisher_->msg_.dof_states[i].feedback = measured_state_values_[itf];
+      if (
+        reference_interfaces_.size() == 2 * dof_names_.size() &&
+        measured_state_values_.size() == 2 * dof_names_.size())
       {
-        state_publisher_->msg_.dof_states[i].feedback_dot = measured_state_values_[dof_ + i];
+        state_publisher_->msg_.dof_states[i].feedback_dot = measured_state_values_[itf_dot];
       }
       state_publisher_->msg_.dof_states[i].error =
-        reference_interfaces_[i] - measured_state_values_[i];
+        reference_interfaces_[ref_itf]->get_value<double>() - measured_state_values_[itf];
       if (params_.gains.dof_names_map[params_.dof_names[i]].angle_wraparound)
       {
         // for continuous angles the error is normalized between -pi<error<pi
-        state_publisher_->msg_.dof_states[i].error =
-          angles::shortest_angular_distance(measured_state_values_[i], reference_interfaces_[i]);
+        state_publisher_->msg_.dof_states[i].error = angles::shortest_angular_distance(
+          measured_state_values_[itf], reference_interfaces_[ref_itf]->get_value<double>());
       }
-      if (reference_interfaces_.size() == 2 * dof_ && measured_state_values_.size() == 2 * dof_)
+      if (
+        reference_interfaces_.size() == 2 * dof_names_.size() &&
+        measured_state_values_.size() == 2 * dof_names_.size())
       {
         state_publisher_->msg_.dof_states[i].error_dot =
-          reference_interfaces_[dof_ + i] - measured_state_values_[dof_ + i];
+          reference_interfaces_[ref_itf_dot]->get_value<double>() - measured_state_values_[itf_dot];
       }
       state_publisher_->msg_.dof_states[i].time_step = period.seconds();
       // Command can store the old calculated values. This should be obvious because at least one
       // another value is NaN.
-      state_publisher_->msg_.dof_states[i].output = command_interfaces_[i].get_value();
+      state_publisher_->msg_.dof_states[i].output = command_interfaces_[i].get_value<double>();
     }
     state_publisher_->unlockAndPublish();
   }

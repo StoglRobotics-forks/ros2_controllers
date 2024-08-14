@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "control_msgs/msg/multi_dof_command.hpp"
@@ -91,8 +92,11 @@ protected:
   pid_controller::Params params_;
 
   std::vector<std::string> reference_and_state_dof_names_;
-  size_t dof_;
-  std::vector<double> measured_state_values_;
+  std::string itf_;
+  std::string itf_dot_;
+  std::string node_name;
+  std::vector<std::string> dof_names_;
+  std::unordered_map<std::string, double> measured_state_values_;
 
   using PidPtr = std::shared_ptr<control_toolbox::PidROS>;
   std::vector<PidPtr> pids_;
