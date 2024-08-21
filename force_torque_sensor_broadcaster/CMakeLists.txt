@@ -8,6 +8,7 @@ endif()
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   controller_interface
+  filters
   generate_parameter_library
   geometry_msgs
   hardware_interface

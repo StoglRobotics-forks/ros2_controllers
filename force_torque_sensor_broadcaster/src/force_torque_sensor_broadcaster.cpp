@@ -89,10 +89,38 @@ controller_interface::CallbackReturn ForceTorqueSensorBroadcaster::on_configure(
 
   try
   {
+    filter_chain_ = std::make_unique<filters::FilterChain<geometry_msgs::msg::WrenchStamped>>(
+      "geometry_msgs::msg::WrenchStamped");
+  }
+  catch (const std::exception & e)
+  {
+    fprintf(
+      stderr,
+      "Exception thrown during filter chain creation at configure stage with message : %s \n",
+      e.what());
+    return CallbackReturn::ERROR;
+  }
+
+  if (!filter_chain_->configure(
+        "sensor_filter_chain", get_node()->get_node_logging_interface(),
+        get_node()->get_node_parameters_interface()))
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "Could not configure sensor filter chain, please check if the "
+      "parameters are provided correctly.");
+    return CallbackReturn::ERROR;
+  }
+
+  try
+  {
     // register ft sensor data publisher
     sensor_state_publisher_ = get_node()->create_publisher<geometry_msgs::msg::WrenchStamped>(
       "~/wrench", rclcpp::SystemDefaultsQoS());
     realtime_publisher_ = std::make_unique<StatePublisher>(sensor_state_publisher_);
+    raw_sensor_state_publisher_ = get_node()->create_publisher<geometry_msgs::msg::WrenchStamped>(
+      "~/raw_wrench", rclcpp::SystemDefaultsQoS());
+    raw_realtime_publisher_ = std::make_unique<StatePublisher>(raw_sensor_state_publisher_);
   }
   catch (const std::exception & e)
   {
@@ -105,6 +133,10 @@ controller_interface::CallbackReturn ForceTorqueSensorBroadcaster::on_configure(
   realtime_publisher_->lock();
   realtime_publisher_->msg_.header.frame_id = params_.frame_id;
   realtime_publisher_->unlock();
+
+  raw_realtime_publisher_->lock();
+  raw_realtime_publisher_->msg_.header.frame_id = params_.frame_id;
+  raw_realtime_publisher_->unlock();
 
   RCLCPP_DEBUG(get_node()->get_logger(), "configure successful");
   return controller_interface::CallbackReturn::SUCCESS;
@@ -148,11 +180,20 @@ controller_interface::return_type ForceTorqueSensorBroadcaster::update_and_write
   {
     params_ = param_listener_->get_params();
   }
+
+  // first publish raw sensor data
+  if (raw_realtime_publisher_ && raw_realtime_publisher_->trylock())
+  {
+    raw_realtime_publisher_->msg_.header.stamp = time;
+    force_torque_sensor_->get_values_as_message(raw_realtime_publisher_->msg_.wrench);
+    this->apply_sensor_offset(params_, raw_realtime_publisher_->msg_);
+    raw_realtime_publisher_->unlockAndPublish();
+  }
+
   if (realtime_publisher_ && realtime_publisher_->trylock())
   {
     realtime_publisher_->msg_.header.stamp = time;
-    force_torque_sensor_->get_values_as_message(realtime_publisher_->msg_.wrench);
-    this->apply_sensor_offset(params_, realtime_publisher_->msg_);
+    filter_chain_->update(raw_realtime_publisher_->msg_, realtime_publisher_->msg_);
     realtime_publisher_->unlockAndPublish();
   }
 
