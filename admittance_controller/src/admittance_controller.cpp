@@ -427,18 +427,7 @@ controller_interface::return_type AdmittanceController::update_and_write_command
   read_state_from_hardware(joint_state_, ft_values_);
 
   // apply admittance control to reference to determine desired state
-
-  /* some flag that determines whether we call the update() with goal_pose or with joint reference.
-    How can we know here whether the reference was updated from subscribers or from itnerfaces?
-  
-  if(updated_from_subscribers)
-    admittance_->update(joint_state_, ft_values_, *goal_pose_msg_, period, reference_admittance_);
-  else
-    admittance_->update(joint_state_, ft_values_, reference_, period, reference_admittance_);
-    
-  */
-
-  admittance_->update(joint_state_, ft_values_, *goal_pose_msg_, period, reference_admittance_);
+  admittance_->update(joint_state_, ft_values_, reference_, period, reference_admittance_);
 
   // write calculated values to joint interfaces
   write_state_to_hardware(reference_admittance_);
