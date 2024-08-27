@@ -15,8 +15,6 @@
 #ifndef TEST_STEERING_CONTROLLERS_LIBRARY_HPP_
 #define TEST_STEERING_CONTROLLERS_LIBRARY_HPP_
 
-#include <gmock/gmock.h>
-
 #include <chrono>
 #include <memory>
 #include <string>
@@ -88,7 +86,7 @@ public:
   controller_interface::CallbackReturn on_activate(
     const rclcpp_lifecycle::State & previous_state) override
   {
-    auto ref_itfs = on_export_reference_interfaces();
+    auto ref_itf_descriptions = export_reference_interface_descriptions();
     return steering_controllers_library::SteeringControllersLibrary::on_activate(previous_state);
   }
 

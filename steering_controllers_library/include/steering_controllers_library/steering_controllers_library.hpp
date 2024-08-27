@@ -104,6 +104,8 @@ protected:
   std::unique_ptr<ControllerStatePublisherOdom> rt_odom_state_publisher_;
   std::unique_ptr<ControllerStatePublisherTf> rt_tf_odom_state_publisher_;
 
+  std::vector<hardware_interface::InterfaceDescription> export_state_interface_descriptions()
+    override;
   // override methods from ChainableControllerInterface
   std::vector<hardware_interface::InterfaceDescription> export_reference_interface_descriptions()
     override;

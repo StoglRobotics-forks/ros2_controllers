@@ -75,7 +75,7 @@ TEST_F(TricycleSteeringControllerTest, check_exported_interfaces)
   EXPECT_EQ(state_if_conf.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   // check ref itfs
-  auto ref_if_conf = controller_->export_reference_interfaces();
+  auto ref_if_conf = controller_->export_reference_interface_descriptions();
   ASSERT_EQ(ref_if_conf.size(), joint_reference_interfaces_.size());
   for (size_t i = 0; i < joint_reference_interfaces_.size(); ++i)
   {

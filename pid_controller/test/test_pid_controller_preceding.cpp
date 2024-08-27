@@ -54,7 +54,7 @@ TEST_F(PidControllerTest, check_exported_interfaces)
   ASSERT_EQ(controller_->on_configure(rclcpp_lifecycle::State()), NODE_SUCCESS);
 
   auto cmd_if_conf = controller_->command_interface_configuration();
-  ASSERT_EQ(cmd_if_conf.names.size(), dof_command_values_.size());
+  ASSERT_EQ(cmd_if_conf.names.size(), command_itfs_.size());
   for (size_t i = 0; i < cmd_if_conf.names.size(); ++i)
   {
     EXPECT_EQ(cmd_if_conf.names[i], dof_names_[i] + "/" + command_interface_);
@@ -62,7 +62,7 @@ TEST_F(PidControllerTest, check_exported_interfaces)
   EXPECT_EQ(cmd_if_conf.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   auto state_if_conf = controller_->state_interface_configuration();
-  ASSERT_EQ(state_if_conf.names.size(), dof_state_values_.size());
+  ASSERT_EQ(state_if_conf.names.size(), state_itfs_.size());
   size_t si_index = 0;
   for (const auto & interface : state_interfaces_)
   {
@@ -76,7 +76,7 @@ TEST_F(PidControllerTest, check_exported_interfaces)
 
   // check ref itfs
   auto ref_if_conf = controller_->export_reference_interfaces();
-  ASSERT_EQ(ref_if_conf.size(), dof_state_values_.size());
+  ASSERT_EQ(ref_if_conf.size(), state_itfs_.size());
   size_t ri_index = 0;
   for (const auto & interface : state_interfaces_)
   {
@@ -84,9 +84,9 @@ TEST_F(PidControllerTest, check_exported_interfaces)
     {
       const std::string ref_itf_name =
         std::string(controller_->get_node()->get_name()) + "/" + dof_name + "/" + interface;
-      EXPECT_EQ(ref_if_conf[ri_index].get_name(), ref_itf_name);
-      EXPECT_EQ(ref_if_conf[ri_index].get_prefix_name(), controller_->get_node()->get_name());
-      EXPECT_EQ(ref_if_conf[ri_index].get_interface_name(), dof_name + "/" + interface);
+      EXPECT_EQ(ref_if_conf[ri_index]->get_name(), ref_itf_name);
+      EXPECT_EQ(ref_if_conf[ri_index]->get_prefix_name(), controller_->get_node()->get_name());
+      EXPECT_EQ(ref_if_conf[ri_index]->get_interface_name(), dof_name + "/" + interface);
       ++ri_index;
     }
   }

@@ -60,8 +60,8 @@ bool BicycleSteeringController::update_odometry(const rclcpp::Duration & period)
   }
   else
   {
-    const double traction_wheel_value = state_interfaces_[STATE_TRACTION_WHEEL].get_value();
-    const double steering_position = state_interfaces_[STATE_STEER_AXIS].get_value();
+    const double traction_wheel_value = state_interfaces_[STATE_TRACTION_WHEEL].get_value<double>();
+    const double steering_position = state_interfaces_[STATE_STEER_AXIS].get_value<double>();
     if (std::isfinite(traction_wheel_value) && std::isfinite(steering_position))
     {
       if (params_.position_feedback)

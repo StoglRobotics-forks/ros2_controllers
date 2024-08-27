@@ -453,7 +453,7 @@ bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajecto
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value<double>();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value();
     }
   };
 
@@ -461,7 +461,7 @@ bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajecto
   {
     return std::find_if(
              joint_interface.begin(), joint_interface.end(), [](const auto & interface)
-             { return std::isnan(interface.get().get_value<double>()); }) == joint_interface.end();
+             { return std::isnan(interface.get().get_value()); }) == joint_interface.end();
   };
 
   // Assign values from the command interfaces as state. Therefore needs check for both.
@@ -523,7 +523,7 @@ bool JointTrajectoryController::read_commands_from_command_interfaces(
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value<double>();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value();
     }
   };
 
@@ -531,7 +531,7 @@ bool JointTrajectoryController::read_commands_from_command_interfaces(
   {
     return std::find_if(
              joint_interface.begin(), joint_interface.end(), [](const auto & interface)
-             { return std::isnan(interface.get().get_value<double>()); }) == joint_interface.end();
+             { return std::isnan(interface.get().get_value()); }) == joint_interface.end();
   };
 
   // Assign values from the command interfaces as command.

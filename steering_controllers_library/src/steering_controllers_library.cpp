@@ -312,6 +312,12 @@ SteeringControllersLibrary::state_interface_configuration() const
 }
 
 std::vector<hardware_interface::InterfaceDescription>
+SteeringControllersLibrary::export_state_interface_descriptions()
+{
+  return {};
+}
+
+std::vector<hardware_interface::InterfaceDescription>
 SteeringControllersLibrary::export_reference_interface_descriptions()
 {
   using hardware_interface::InterfaceDescription;
@@ -368,16 +374,16 @@ controller_interface::return_type SteeringControllersLibrary::update_reference_f
   {
     if (!std::isnan(current_ref->twist.linear.x) && !std::isnan(current_ref->twist.angular.z))
     {
-      reference_interfaces_ptrs_[lin_ref_itf_]->set_value(current_ref->twist.linear.x);
-      reference_interfaces_ptrs_[ang_ref_itf_]->set_value(current_ref->twist.angular.z);
+      reference_interfaces_[lin_ref_itf_]->set_value(current_ref->twist.linear.x);
+      reference_interfaces_[ang_ref_itf_]->set_value(current_ref->twist.angular.z);
     }
   }
   else
   {
     if (!std::isnan(current_ref->twist.linear.x) && !std::isnan(current_ref->twist.angular.z))
     {
-      reference_interfaces_ptrs_[lin_ref_itf_]->set_value(0.0);
-      reference_interfaces_ptrs_[ang_ref_itf_]->set_value(0.0);
+      reference_interfaces_[lin_ref_itf_]->set_value(0.0);
+      reference_interfaces_[ang_ref_itf_]->set_value(0.0);
       current_ref->twist.linear.x = std::numeric_limits<double>::quiet_NaN();
       current_ref->twist.angular.z = std::numeric_limits<double>::quiet_NaN();
     }
@@ -397,12 +403,12 @@ controller_interface::return_type SteeringControllersLibrary::update_and_write_c
   // TODO(destogl): add limiter for the velocities
 
   if (
-    !std::isnan(reference_interfaces_ptrs_[lin_ref_itf_]->get_value<double>()) &&
-    !std::isnan(reference_interfaces_ptrs_[ang_ref_itf_]->get_value<double>()))
+    !std::isnan(reference_interfaces_[lin_ref_itf_]->get_value<double>()) &&
+    !std::isnan(reference_interfaces_[ang_ref_itf_]->get_value<double>()))
   {
     // store (for open loop odometry) and set commands
-    last_linear_velocity_ = reference_interfaces_ptrs_[lin_ref_itf_]->get_value<double>();
-    last_angular_velocity_ = reference_interfaces_ptrs_[ang_ref_itf_]->get_value<double>();
+    last_linear_velocity_ = reference_interfaces_[lin_ref_itf_]->get_value<double>();
+    last_angular_velocity_ = reference_interfaces_[ang_ref_itf_]->get_value<double>();
 
     auto [traction_commands, steering_commands] =
       odometry_.get_commands(last_linear_velocity_, last_angular_velocity_, params_.open_loop);
@@ -486,30 +492,30 @@ controller_interface::return_type SteeringControllersLibrary::update_and_write_c
       if (params_.position_feedback)
       {
         controller_state_publisher_->msg_.traction_wheels_position.push_back(
-          state_interfaces_[i].get_value());
+          state_interfaces_[i].get_value<double>());
       }
       else
       {
         controller_state_publisher_->msg_.traction_wheels_velocity.push_back(
-          state_interfaces_[i].get_value());
+          state_interfaces_[i].get_value<double>());
       }
       controller_state_publisher_->msg_.linear_velocity_command.push_back(
-        command_interfaces_[i].get_value());
+        command_interfaces_[i].get_value<double>());
     }
 
     for (size_t i = 0; i < number_of_steering_wheels; ++i)
     {
       controller_state_publisher_->msg_.steer_positions.push_back(
-        state_interfaces_[number_of_traction_wheels + i].get_value());
+        state_interfaces_[number_of_traction_wheels + i].get_value<double>());
       controller_state_publisher_->msg_.steering_angle_command.push_back(
-        command_interfaces_[number_of_traction_wheels + i].get_value());
+        command_interfaces_[number_of_traction_wheels + i].get_value<double>());
     }
 
     controller_state_publisher_->unlockAndPublish();
   }
 
-  reference_interfaces_ptrs_[lin_ref_itf_]->set_value(std::numeric_limits<double>::quiet_NaN());
-  reference_interfaces_ptrs_[ang_ref_itf_]->set_value(std::numeric_limits<double>::quiet_NaN());
+  reference_interfaces_[lin_ref_itf_]->set_value(std::numeric_limits<double>::quiet_NaN());
+  reference_interfaces_[ang_ref_itf_]->set_value(std::numeric_limits<double>::quiet_NaN());
 
   return controller_interface::return_type::OK;
 }
