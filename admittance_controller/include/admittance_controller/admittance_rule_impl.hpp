@@ -32,6 +32,7 @@ namespace admittance_controller
 {
 
 constexpr auto NUM_CARTESIAN_DOF = 6;  // (3 translation + 3 rotation)
+const double EPSILON = 1e-6;
 
 /// Configure admittance rule memory for num joints and load kinematics interface
 controller_interface::return_type AdmittanceRule::configure(
@@ -54,9 +55,7 @@ controller_interface::return_type AdmittanceRule::configure(
       kinematics_ = std::unique_ptr<kinematics_interface::KinematicsInterface>(
         kinematics_loader_->createUnmanagedInstance(parameters_.kinematics.plugin_name));
       if (!kinematics_->initialize(
-            robot_description,
-            node->get_node_parameters_interface(),
-            "kinematics"))
+            robot_description, node->get_node_parameters_interface(), "kinematics"))
       {
         return controller_interface::return_type::ERROR;
       }
@@ -194,6 +193,15 @@ controller_interface::return_type AdmittanceRule::update(
   admittance_state_.wrench_base.block<3, 1>(3, 0) =
     admittance_transforms_.world_base_.rotation().transpose() * wrench_world_.block<3, 1>(3, 0);
 
+  // set the wrench force to zero if too small
+  for (int64_t i = 0; i < admittance_state_.wrench_base.size(); ++i)
+  {
+    if (std::abs(admittance_state_.wrench_base(i)) < EPSILON)
+    {
+      admittance_state_.wrench_base(i) = 0.0;
+    }
+  }
+
   // Compute admittance control law
   vec_to_eigen(current_joint_state.positions, admittance_state_.current_joint_pos);
   admittance_state_.rot_base_control = admittance_transforms_.base_control_.rotation();
@@ -225,18 +233,28 @@ controller_interface::return_type AdmittanceRule::update(
 
 bool AdmittanceRule::calculate_admittance_rule(AdmittanceState & admittance_state, double dt)
 {
+  const auto rot_base_control = admittance_state.rot_base_control;
+  // Transform to the control frame
+  // A reference is here:  https://users.wpi.edu/~jfu2/rbe502/files/force_control.pdf
+  // Force Control by Luigi Villani and Joris De Schutter
+  // Page 200
+  Eigen::Matrix<double, 6, 1> M = Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 3, 3> M_pos = Eigen::Matrix<double, 3, 3>::Zero();
+  Eigen::Matrix<double, 3, 3> M_rot = Eigen::Matrix<double, 3, 3>::Zero();
+  M_pos.diagonal() = admittance_state.mass_inv.block<3, 1>(0, 0);
+  M_rot.diagonal() = admittance_state.mass_inv.block<3, 1>(3, 0);
+  M_pos = rot_base_control * M_pos * rot_base_control.transpose();
+  M_rot = rot_base_control * M_rot * rot_base_control.transpose();
+  M.block<3, 1>(0, 0) = M_pos.diagonal();
+  M.block<3, 1>(3, 0) = M_rot.diagonal();
+
   // Create stiffness matrix in base frame. The user-provided values of admittance_state.stiffness
   // correspond to the six diagonal elements of the stiffness matrix expressed in the control frame
-  auto rot_base_control = admittance_state.rot_base_control;
   Eigen::Matrix<double, 6, 6> K = Eigen::Matrix<double, 6, 6>::Zero();
   Eigen::Matrix<double, 3, 3> K_pos = Eigen::Matrix<double, 3, 3>::Zero();
   Eigen::Matrix<double, 3, 3> K_rot = Eigen::Matrix<double, 3, 3>::Zero();
   K_pos.diagonal() = admittance_state.stiffness.block<3, 1>(0, 0);
   K_rot.diagonal() = admittance_state.stiffness.block<3, 1>(3, 0);
-  // Transform to the control frame
-  // A reference is here:  https://users.wpi.edu/~jfu2/rbe502/files/force_control.pdf
-  // Force Control by Luigi Villani and Joris De Schutter
-  // Page 200
   K_pos = rot_base_control * K_pos * rot_base_control.transpose();
   K_rot = rot_base_control * K_rot * rot_base_control.transpose();
   K.block<3, 3>(0, 0) = K_pos;
@@ -254,16 +272,18 @@ bool AdmittanceRule::calculate_admittance_rule(AdmittanceState & admittance_stat
   D.block<3, 3>(3, 3) = D_rot;
 
   // calculate admittance relative offset in base frame
+  // TODO(destogl): rename this to desired_trans_base_ft and add to `admittance_state_` and
+  // precompute it in `get_admittance_state_from_transforms`
   Eigen::Isometry3d desired_trans_base_ft;
   kinematics_->calculate_link_transform(
     admittance_state.current_joint_pos, admittance_state.ft_sensor_frame, desired_trans_base_ft);
   Eigen::Matrix<double, 6, 1> X;
   X.block<3, 1>(0, 0) =
     desired_trans_base_ft.translation() - admittance_state.ref_trans_base_ft.translation();
-  auto R_ref = admittance_state.ref_trans_base_ft.rotation();
-  auto R_desired = desired_trans_base_ft.rotation();
-  auto R = R_desired * R_ref.transpose();
-  auto angle_axis = Eigen::AngleAxisd(R);
+  const auto R_ref = admittance_state.ref_trans_base_ft.rotation();
+  const auto R_desired = desired_trans_base_ft.rotation();
+  const auto R = R_desired * R_ref.transpose();
+  const auto angle_axis = Eigen::AngleAxisd(R);
   X.block<3, 1>(3, 0) = angle_axis.angle() * angle_axis.axis();
 
   // get admittance relative velocity
@@ -281,8 +301,34 @@ bool AdmittanceRule::calculate_admittance_rule(AdmittanceState & admittance_stat
   F_base.block<3, 1>(3, 0) = rot_base_control * F_control.block<3, 1>(3, 0);
 
   // Compute admittance control law in the base frame: F = M*x_ddot + D*x_dot + K*x
-  Eigen::Matrix<double, 6, 1> X_ddot =
-    admittance_state.mass_inv.cwiseProduct(F_base - D * X_dot - K * X);
+  Eigen::Matrix<double, 6, 1> X_ddot = M.cwiseProduct(F_base - D * X_dot - K * X);
+
+  // set the acceleration to zero if too small
+  // for (int64_t i = 0; i < X_ddot.size(); ++i)
+  //{
+  //  if (std::abs(X_ddot(i)) < EPSILON)
+  //  {
+  //    X_ddot(i) = 0.0;
+  //  }
+  //}
+
+  // RCLCPP_INFO(
+  // rclcpp::get_logger("AdmittanceRule"),
+  // "Admittance Rule: "
+  // "\nAdmittance mass inverse [M^-1]: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]"
+  // "\nAdmittance force [F]: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]"
+  // "\nAdmittance damping [D]: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]"
+  // "\nAdmittance velocity [X_dot]: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]"
+  // "\nAdmittance stiffness [K]: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]"
+  // "\nAdmittance offset [X]: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]"
+  // "\nAdmittance acceleration [X_ddot]: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+  // M(0), M(1), M(2), M(3), M(4), M(5), F_base(0), F_base(1), F_base(2), F_base(3), F_base(4),
+  // F_base(5), D.diagonal()(0), D.diagonal()(1), D.diagonal()(2), D.diagonal()(3), D.diagonal()(4),
+  // D.diagonal()(5), X_dot(0), X_dot(1), X_dot(2), X_dot(3), X_dot(4), X_dot(5), K.diagonal()(0),
+  // K.diagonal()(1), K.diagonal()(2), K.diagonal()(3), K.diagonal()(4), K.diagonal()(5), X(0),
+  // X(1), X(2), X(3), X(4), X(5), X_ddot(0), X_ddot(1), X_ddot(2), X_ddot(3), X_ddot(4),
+  // X_ddot(5));
+
   bool success = kinematics_->convert_cartesian_deltas_to_joint_deltas(
     admittance_state.current_joint_pos, X_ddot, admittance_state.ft_sensor_frame,
     admittance_state.joint_acc);
@@ -385,7 +431,7 @@ const control_msgs::msg::AdmittanceControllerState & AdmittanceRule::get_control
   state_message_.admittance_position = tf2::eigenToTransform(admittance_state_.admittance_position);
 
   state_message_.ref_trans_base_ft.header.frame_id = parameters_.kinematics.base;
-  state_message_.ref_trans_base_ft.header.frame_id = "ft_reference";
+  state_message_.ref_trans_base_ft.child_frame_id = parameters_.ft_sensor.frame.id;
   state_message_.ref_trans_base_ft = tf2::eigenToTransform(admittance_state_.ref_trans_base_ft);
 
   Eigen::Quaterniond quat(admittance_state_.rot_base_control);
