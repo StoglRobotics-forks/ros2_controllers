@@ -126,6 +126,58 @@ geometry_msgs::msg::Pose AdmittanceRule::initialize_goal_pose(
   return tf2::toMsg(admittance_transforms_.ref_base_ft_);
 }
 
+void AdmittanceRule::cartesian_goal_to_joint_space(
+    const geometry_msgs::msg::PoseStamped & input,
+    trajectory_msgs::msg::JointTrajectoryPoint & current_state,
+    trajectory_msgs::msg::JointTrajectoryPoint & output)
+{
+  // calculate difference between `tool0` current and goal pose, 
+  // both expressed in `base_link` frame.
+  Eigen::Isometry3d goal_base_ft;
+  tf2::fromMsg(input.pose, goal_base_ft);
+
+  Eigen::Matrix<double, 6, 1> delta_X;
+  delta_X.block<3, 1>(0, 0) =
+    goal_base_ft.translation() - admittance_transforms_.base_ft_.translation();
+
+  const auto R_current = admittance_transforms_.base_ft_.rotation();
+  const auto R_desired = goal_base_ft.rotation();
+  const auto R = R_desired * R_current.transpose();
+  const auto angle_axis = Eigen::AngleAxisd(R);
+  delta_X.block<3, 1>(3, 0) = angle_axis.angle() * angle_axis.axis();
+
+
+  std::cout<<input.header.frame_id<<" delta_X translation:"<<std::endl;
+  std::cout<<delta_X(0,0)<<std::endl;
+  std::cout<<delta_X(1,0)<<std::endl;
+  std::cout<<delta_X(2,0)<<std::endl;
+
+  std::cout<<input.header.frame_id<<" delta_X rotation:"<<std::endl;
+  std::cout<<delta_X(3,0)<<std::endl;
+  std::cout<<delta_X(4,0)<<std::endl;
+  std::cout<<delta_X(5,0)<<std::endl;
+  std::cout<<"-------------"<<std::endl;
+
+  Eigen::VectorXd delta_joints = Eigen::VectorXd::Zero(6);
+  bool success = kinematics_->convert_cartesian_deltas_to_joint_deltas(
+    admittance_state_.current_joint_pos, delta_X, parameters_.control.frame.id, delta_joints);
+  
+  /**/
+  if(success){
+    std::cout<<"VectorXd: "<<std::endl;
+    for(size_t i = 0; i < 6; i++)
+    {
+      std::cout<<delta_joints(i)<<std::endl;
+    }
+  }else{
+    std::cout<<"couldn't convert."<<std::endl;
+  }
+  
+
+  for(size_t i = 0; i < output.positions.size(); i++)
+    output.positions[i] = current_state.positions[i] + delta_joints(i);
+}
+
 void AdmittanceRule::apply_parameters_update()
 {
   if (parameter_handler_->is_old(parameters_))

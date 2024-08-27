@@ -143,6 +143,7 @@ protected:
   // ROS messages
   std::shared_ptr<trajectory_msgs::msg::JointTrajectoryPoint> joint_command_msg_;
   std::shared_ptr<geometry_msgs::msg::PoseStamped> goal_pose_msg_;
+  geometry_msgs::msg::PoseStamped last_goal_pose_;
 
   // real-time buffer
   realtime_tools::RealtimeBuffer<std::shared_ptr<trajectory_msgs::msg::JointTrajectoryPoint>>
@@ -159,8 +160,16 @@ protected:
   // joint_state_: current joint readings from the hardware
   // reference_admittance_: reference value used by the controller after the admittance values are
   // applied ft_values_: values read from the force torque sensor
-  trajectory_msgs::msg::JointTrajectoryPoint reference_, joint_state_, reference_admittance_;
+  trajectory_msgs::msg::JointTrajectoryPoint reference_, joint_state_, reference_admittance_, joint_space_goal_;
   geometry_msgs::msg::Wrench ft_values_;
+
+  /**
+   * @brief Check whether two poses differ within a certain threshold.
+   */
+  bool is_same_pose(
+    const geometry_msgs::msg::Pose & a,
+    const geometry_msgs::msg::Pose & b,
+    double eps = 1e-5);
 
   /**
    * @brief Read values from hardware interfaces and set corresponding fields of state_current and

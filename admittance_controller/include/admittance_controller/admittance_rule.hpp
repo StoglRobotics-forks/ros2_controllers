@@ -160,6 +160,17 @@ public:
    * \param[in] current_joint_state message
    */
   geometry_msgs::msg::Pose initialize_goal_pose(const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state);
+  
+  /**
+   * @brief Convert cartesian goal pose to joint-space goal.
+   * \param[in] input PoseStamped goal expressed as ft_sensor link pose in base_link frame
+   * \param[in] current_state current joint state
+   * \param[out] output = current_state + delta_theta required to reach the goal pose
+   */
+  void cartesian_goal_to_joint_space(
+    const geometry_msgs::msg::PoseStamped & input,
+    trajectory_msgs::msg::JointTrajectoryPoint & current_state,
+    trajectory_msgs::msg::JointTrajectoryPoint & output);
 
 public:
   // admittance config parameters
