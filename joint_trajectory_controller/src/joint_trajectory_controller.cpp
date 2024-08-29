@@ -410,7 +410,10 @@ controller_interface::return_type JointTrajectoryController::update(
 void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
 {
   auto assign_point_from_interface =
-    [&](std::vector<double> & trajectory_point_interface, const auto & joint_interface)
+    [&](
+      std::vector<double> & trajectory_point_interface,
+      const std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>> &
+        joint_interface)
   {
     for (size_t index = 0; index < dof_; ++index)
     {
@@ -449,19 +452,26 @@ bool JointTrajectoryController::read_state_from_command_interfaces(JointTrajecto
   bool has_values = true;
 
   auto assign_point_from_interface =
-    [&](std::vector<double> & trajectory_point_interface, const auto & joint_interface)
+    [&](
+      std::vector<double> & trajectory_point_interface,
+      const std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> &
+        joint_interface)
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value<double>();
     }
   };
 
-  auto interface_has_values = [](const auto & joint_interface)
+  auto interface_has_values =
+    [](const std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> &
+         joint_interface)
   {
     return std::find_if(
-             joint_interface.begin(), joint_interface.end(), [](const auto & interface)
-             { return std::isnan(interface.get().get_value()); }) == joint_interface.end();
+             joint_interface.begin(), joint_interface.end(),
+             [](
+               const std::reference_wrapper<hardware_interface::LoanedCommandInterface> & interface)
+             { return std::isnan(interface.get().get_value<double>()); }) == joint_interface.end();
   };
 
   // Assign values from the command interfaces as state. Therefore needs check for both.
@@ -519,19 +529,26 @@ bool JointTrajectoryController::read_commands_from_command_interfaces(
   bool has_values = true;
 
   auto assign_point_from_interface =
-    [&](std::vector<double> & trajectory_point_interface, const auto & joint_interface)
+    [&](
+      std::vector<double> & trajectory_point_interface,
+      const std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> &
+        joint_interface)
   {
     for (size_t index = 0; index < dof_; ++index)
     {
-      trajectory_point_interface[index] = joint_interface[index].get().get_value();
+      trajectory_point_interface[index] = joint_interface[index].get().get_value<double>();
     }
   };
 
-  auto interface_has_values = [](const auto & joint_interface)
+  auto interface_has_values =
+    [](const std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> &
+         joint_interface)
   {
     return std::find_if(
-             joint_interface.begin(), joint_interface.end(), [](const auto & interface)
-             { return std::isnan(interface.get().get_value()); }) == joint_interface.end();
+             joint_interface.begin(), joint_interface.end(),
+             [](
+               const std::reference_wrapper<hardware_interface::LoanedCommandInterface> & interface)
+             { return std::isnan(interface.get().get_value<double>()); }) == joint_interface.end();
   };
 
   // Assign values from the command interfaces as command.

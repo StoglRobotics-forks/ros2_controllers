@@ -232,13 +232,6 @@ public:
     joint_names_ = {"joint1", "joint2", "joint3"};
     command_joint_names_ = {
       "following_controller/joint1", "following_controller/joint2", "following_controller/joint3"};
-    joint_pos_.resize(joint_names_.size(), 0.0);
-    joint_state_pos_.resize(joint_names_.size(), 0.0);
-    joint_vel_.resize(joint_names_.size(), 0.0);
-    joint_state_vel_.resize(joint_names_.size(), 0.0);
-    joint_acc_.resize(joint_names_.size(), 0.0);
-    joint_state_acc_.resize(joint_names_.size(), 0.0);
-    joint_eff_.resize(joint_names_.size(), 0.0);
     // Default interface values - they will be overwritten by parameterized tests
     command_interface_types_ = {"position"};
     state_interface_types_ = {"position", "velocity"};
@@ -299,7 +292,7 @@ public:
 
   void SetUpAndActivateTrajectoryController(
     rclcpp::Executor & executor, const std::vector<rclcpp::Parameter> & parameters = {},
-    bool separate_cmd_and_state_values = false, double k_p = 0.0, double ff = 1.0,
+    double k_p = 0.0, double ff = 1.0,
     const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS,
     const std::vector<double> initial_vel_joints = INITIAL_VEL_JOINTS,
     const std::vector<double> initial_acc_joints = INITIAL_ACC_JOINTS,
@@ -326,12 +319,10 @@ public:
     traj_controller_->get_node()->configure();
 
     ActivateTrajectoryController(
-      separate_cmd_and_state_values, initial_pos_joints, initial_vel_joints, initial_acc_joints,
-      initial_eff_joints);
+      initial_pos_joints, initial_vel_joints, initial_acc_joints, initial_eff_joints);
   }
 
   rclcpp_lifecycle::State ActivateTrajectoryController(
-    bool separate_cmd_and_state_values = false,
     const std::vector<double> initial_pos_joints = INITIAL_POS_JOINTS,
     const std::vector<double> initial_vel_joints = INITIAL_VEL_JOINTS,
     const std::vector<double> initial_acc_joints = INITIAL_ACC_JOINTS,
@@ -348,24 +339,38 @@ public:
     acc_state_interfaces_.reserve(joint_names_.size());
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
-      pos_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], hardware_interface::HW_IF_POSITION, &joint_pos_[i]));
-      vel_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], hardware_interface::HW_IF_VELOCITY, &joint_vel_[i]));
-      acc_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], hardware_interface::HW_IF_ACCELERATION, &joint_acc_[i]));
-      eff_cmd_interfaces_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], hardware_interface::HW_IF_EFFORT, &joint_eff_[i]));
+      pos_cmd_interfaces_.emplace_back(
+        hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+          joint_names_[i],
+          hardware_interface::InterfaceInfo(hardware_interface::HW_IF_POSITION, "double", "0.0"))));
+      vel_cmd_interfaces_.emplace_back(
+        hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+          joint_names_[i],
+          hardware_interface::InterfaceInfo(hardware_interface::HW_IF_VELOCITY, "double", "0.0"))));
+      acc_cmd_interfaces_.emplace_back(
+        hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+          joint_names_[i], hardware_interface::InterfaceInfo(
+                             hardware_interface::HW_IF_ACCELERATION, "double", "0.0"))));
+      eff_cmd_interfaces_.emplace_back(
+        hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+          joint_names_[i],
+          hardware_interface::InterfaceInfo(hardware_interface::HW_IF_EFFORT, "double", "0.0"))));
 
-      pos_state_interfaces_.emplace_back(hardware_interface::StateInterface(
-        joint_names_[i], hardware_interface::HW_IF_POSITION,
-        separate_cmd_and_state_values ? &joint_state_pos_[i] : &joint_pos_[i]));
-      vel_state_interfaces_.emplace_back(hardware_interface::StateInterface(
-        joint_names_[i], hardware_interface::HW_IF_VELOCITY,
-        separate_cmd_and_state_values ? &joint_state_vel_[i] : &joint_vel_[i]));
-      acc_state_interfaces_.emplace_back(hardware_interface::StateInterface(
-        joint_names_[i], hardware_interface::HW_IF_ACCELERATION,
-        separate_cmd_and_state_values ? &joint_state_acc_[i] : &joint_acc_[i]));
+      pos_state_interfaces_.emplace_back(
+        hardware_interface::StateInterface(hardware_interface::InterfaceDescription(
+          joint_names_[i],
+          hardware_interface::InterfaceInfo(
+            hardware_interface::HW_IF_POSITION, "double", std::to_string(INITIAL_POS_JOINT1)))));
+      vel_state_interfaces_.emplace_back(
+        hardware_interface::StateInterface(hardware_interface::InterfaceDescription(
+          joint_names_[i],
+          hardware_interface::InterfaceInfo(
+            hardware_interface::HW_IF_VELOCITY, "double", std::to_string(INITIAL_POS_JOINT2)))));
+      acc_state_interfaces_.emplace_back(
+        hardware_interface::StateInterface(hardware_interface::InterfaceDescription(
+          joint_names_[i], hardware_interface::InterfaceInfo(
+                             hardware_interface::HW_IF_ACCELERATION, "double",
+                             std::to_string(INITIAL_POS_JOINT3)))));
 
       // Add to export lists and set initial values
       cmd_interfaces.emplace_back(pos_cmd_interfaces_.back());
@@ -376,12 +381,7 @@ public:
       cmd_interfaces.back().set_value(initial_acc_joints[i]);
       cmd_interfaces.emplace_back(eff_cmd_interfaces_.back());
       cmd_interfaces.back().set_value(initial_eff_joints[i]);
-      if (separate_cmd_and_state_values)
-      {
-        joint_state_pos_[i] = INITIAL_POS_JOINTS[i];
-        joint_state_vel_[i] = INITIAL_VEL_JOINTS[i];
-        joint_state_acc_[i] = INITIAL_ACC_JOINTS[i];
-      }
+
       state_interfaces.emplace_back(pos_state_interfaces_.back());
       state_interfaces.emplace_back(vel_state_interfaces_.back());
       state_interfaces.emplace_back(acc_state_interfaces_.back());
@@ -602,30 +602,30 @@ public:
     {
       if (traj_controller_->has_position_command_interface())
       {
-        EXPECT_NEAR(position.at(0), joint_pos_[0], COMMON_THRESHOLD);
-        EXPECT_NEAR(position.at(1), joint_pos_[1], COMMON_THRESHOLD);
-        EXPECT_NEAR(position.at(2), joint_pos_[2], COMMON_THRESHOLD);
+        EXPECT_NEAR(position.at(0), pos_cmd_interfaces_[0].get_value<double>(), COMMON_THRESHOLD);
+        EXPECT_NEAR(position.at(1), pos_cmd_interfaces_[1].get_value<double>(), COMMON_THRESHOLD);
+        EXPECT_NEAR(position.at(2), pos_cmd_interfaces_[2].get_value<double>(), COMMON_THRESHOLD);
       }
 
       if (traj_controller_->has_velocity_command_interface())
       {
-        EXPECT_EQ(velocity.at(0), joint_vel_[0]);
-        EXPECT_EQ(velocity.at(1), joint_vel_[1]);
-        EXPECT_EQ(velocity.at(2), joint_vel_[2]);
+        EXPECT_EQ(velocity.at(0), vel_cmd_interfaces_[0].get_value<double>());
+        EXPECT_EQ(velocity.at(1), vel_cmd_interfaces_[1].get_value<double>());
+        EXPECT_EQ(velocity.at(2), vel_cmd_interfaces_[2].get_value<double>());
       }
 
       if (traj_controller_->has_acceleration_command_interface())
       {
-        EXPECT_EQ(0.0, joint_acc_[0]);
-        EXPECT_EQ(0.0, joint_acc_[1]);
-        EXPECT_EQ(0.0, joint_acc_[2]);
+        EXPECT_EQ(0.0, acc_cmd_interfaces_[0].get_value<double>());
+        EXPECT_EQ(0.0, acc_cmd_interfaces_[1].get_value<double>());
+        EXPECT_EQ(0.0, acc_cmd_interfaces_[2].get_value<double>());
       }
 
       if (traj_controller_->has_effort_command_interface())
       {
-        EXPECT_EQ(0.0, joint_eff_[0]);
-        EXPECT_EQ(0.0, joint_eff_[1]);
-        EXPECT_EQ(0.0, joint_eff_[2]);
+        EXPECT_EQ(0.0, eff_cmd_interfaces_[0].get_value<double>());
+        EXPECT_EQ(0.0, eff_cmd_interfaces_[1].get_value<double>());
+        EXPECT_EQ(0.0, eff_cmd_interfaces_[2].get_value<double>());
       }
     }
     else  // traj_controller_->use_closed_loop_pid_adapter() == true
@@ -637,10 +637,11 @@ public:
         for (size_t i = 0; i < 3; i++)
         {
           EXPECT_TRUE(is_same_sign_or_zero(
-            position.at(i) - pos_state_interfaces_[i].get_value<double>(), joint_vel_[i]))
+            position.at(i) - pos_state_interfaces_[i].get_value<double>(),
+            vel_state_interfaces_[i].get_value<double>()))
             << "test position point " << position.at(i) << ", position state is "
             << pos_state_interfaces_[i].get_value<double>() << ", velocity command is "
-            << joint_vel_[i];
+            << vel_state_interfaces_[i].get_value<double>();
         }
       }
       if (traj_controller_->has_effort_command_interface())
@@ -648,10 +649,11 @@ public:
         for (size_t i = 0; i < 3; i++)
         {
           EXPECT_TRUE(is_same_sign_or_zero(
-            position.at(i) - pos_state_interfaces_[i].get_value<double>(), joint_eff_[i]))
+            position.at(i) - pos_state_interfaces_[i].get_value<double>(),
+            acc_state_interfaces_[i].get_value<double>()))
             << "test position point " << position.at(i) << ", position state is "
             << pos_state_interfaces_[i].get_value<double>() << ", effort command is "
-            << joint_eff_[i];
+            << acc_state_interfaces_[i].get_value<double>();
         }
       }
     }
@@ -664,30 +666,30 @@ public:
 
     if (traj_controller_->has_position_command_interface())
     {
-      EXPECT_NEAR(point.at(0), joint_pos_[0], COMMON_THRESHOLD);
-      EXPECT_NEAR(point.at(1), joint_pos_[1], COMMON_THRESHOLD);
-      EXPECT_NEAR(point.at(2), joint_pos_[2], COMMON_THRESHOLD);
+      EXPECT_NEAR(point.at(0), pos_cmd_interfaces_[0].get_value<double>(), COMMON_THRESHOLD);
+      EXPECT_NEAR(point.at(1), pos_cmd_interfaces_[1].get_value<double>(), COMMON_THRESHOLD);
+      EXPECT_NEAR(point.at(2), pos_cmd_interfaces_[2].get_value<double>(), COMMON_THRESHOLD);
     }
 
     if (traj_controller_->has_velocity_command_interface())
     {
-      EXPECT_EQ(0.0, joint_vel_[0]);
-      EXPECT_EQ(0.0, joint_vel_[1]);
-      EXPECT_EQ(0.0, joint_vel_[2]);
+      EXPECT_EQ(0.0, vel_cmd_interfaces_[0].get_value<double>());
+      EXPECT_EQ(0.0, vel_cmd_interfaces_[1].get_value<double>());
+      EXPECT_EQ(0.0, vel_cmd_interfaces_[2].get_value<double>());
     }
 
     if (traj_controller_->has_acceleration_command_interface())
     {
-      EXPECT_EQ(0.0, joint_acc_[0]);
-      EXPECT_EQ(0.0, joint_acc_[1]);
-      EXPECT_EQ(0.0, joint_acc_[2]);
+      EXPECT_EQ(0.0, acc_cmd_interfaces_[0].get_value<double>());
+      EXPECT_EQ(0.0, acc_cmd_interfaces_[1].get_value<double>());
+      EXPECT_EQ(0.0, acc_cmd_interfaces_[2].get_value<double>());
     }
 
     if (traj_controller_->has_effort_command_interface())
     {
-      EXPECT_EQ(0.0, joint_eff_[0]);
-      EXPECT_EQ(0.0, joint_eff_[1]);
-      EXPECT_EQ(0.0, joint_eff_[2]);
+      EXPECT_EQ(0.0, eff_cmd_interfaces_[0].get_value<double>());
+      EXPECT_EQ(0.0, eff_cmd_interfaces_[1].get_value<double>());
+      EXPECT_EQ(0.0, eff_cmd_interfaces_[2].get_value<double>());
     }
   }
 
@@ -748,13 +750,6 @@ public:
   mutable std::mutex state_mutex_;
   std::shared_ptr<control_msgs::msg::JointTrajectoryControllerState> state_msg_;
 
-  std::vector<double> joint_pos_;
-  std::vector<double> joint_vel_;
-  std::vector<double> joint_acc_;
-  std::vector<double> joint_eff_;
-  std::vector<double> joint_state_pos_;
-  std::vector<double> joint_state_vel_;
-  std::vector<double> joint_state_acc_;
   std::vector<hardware_interface::CommandInterface> pos_cmd_interfaces_;
   std::vector<hardware_interface::CommandInterface> vel_cmd_interfaces_;
   std::vector<hardware_interface::CommandInterface> acc_cmd_interfaces_;
