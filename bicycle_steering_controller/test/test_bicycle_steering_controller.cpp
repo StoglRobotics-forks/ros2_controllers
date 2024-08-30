@@ -49,7 +49,7 @@ TEST_F(BicycleSteeringControllerTest, check_exported_interfaces)
   ASSERT_EQ(controller_->on_configure(rclcpp_lifecycle::State()), NODE_SUCCESS);
 
   auto cmd_if_conf = controller_->command_interface_configuration();
-  ASSERT_EQ(cmd_if_conf.names.size(), joint_command_values_.size());
+  ASSERT_EQ(cmd_if_conf.names.size(), joint_command_values_size_);
   EXPECT_EQ(
     cmd_if_conf.names[CMD_TRACTION_WHEEL], rear_wheels_names_[0] + "/" + traction_interface_name_);
   EXPECT_EQ(
@@ -57,7 +57,7 @@ TEST_F(BicycleSteeringControllerTest, check_exported_interfaces)
   EXPECT_EQ(cmd_if_conf.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   auto state_if_conf = controller_->state_interface_configuration();
-  ASSERT_EQ(state_if_conf.names.size(), joint_state_values_.size());
+  ASSERT_EQ(state_if_conf.names.size(), joint_state_values_size_);
   EXPECT_EQ(
     state_if_conf.names[STATE_TRACTION_WHEEL],
     controller_->rear_wheels_state_names_[0] + "/" + traction_interface_name_);
@@ -67,7 +67,7 @@ TEST_F(BicycleSteeringControllerTest, check_exported_interfaces)
   EXPECT_EQ(state_if_conf.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   // check ref itfs
-  auto reference_interfaces = controller_->export_reference_interfaces();
+  auto reference_interfaces = controller_->export_reference_interface_descriptions();
   ASSERT_EQ(reference_interfaces.size(), joint_reference_interfaces_.size());
   for (size_t i = 0; i < joint_reference_interfaces_.size(); ++i)
   {
@@ -124,9 +124,9 @@ TEST_F(BicycleSteeringControllerTest, reactivate_success)
   ASSERT_EQ(controller_->on_configure(rclcpp_lifecycle::State()), NODE_SUCCESS);
   ASSERT_EQ(controller_->on_activate(rclcpp_lifecycle::State()), NODE_SUCCESS);
   ASSERT_EQ(controller_->on_deactivate(rclcpp_lifecycle::State()), NODE_SUCCESS);
-  ASSERT_TRUE(std::isnan(controller_->command_interfaces_[0].get_value()));
+  ASSERT_TRUE(std::isnan(controller_->command_interfaces_[0].get_value<double>()));
   ASSERT_EQ(controller_->on_activate(rclcpp_lifecycle::State()), NODE_SUCCESS);
-  ASSERT_TRUE(std::isnan(controller_->command_interfaces_[0].get_value()));
+  ASSERT_TRUE(std::isnan(controller_->command_interfaces_[0].get_value<double>()));
 
   ASSERT_EQ(
     controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
@@ -156,16 +156,19 @@ TEST_F(BicycleSteeringControllerTest, test_update_logic)
     controller_interface::return_type::OK);
 
   EXPECT_NEAR(
-    controller_->command_interfaces_[CMD_TRACTION_WHEEL].get_value(), 0.1 / 0.45, COMMON_THRESHOLD);
+    controller_->command_interfaces_[CMD_TRACTION_WHEEL].get_value<double>(), 0.1 / 0.45,
+    COMMON_THRESHOLD);
   EXPECT_NEAR(
-    controller_->command_interfaces_[CMD_STEER_WHEEL].get_value(), 1.4179821977774734,
+    controller_->command_interfaces_[CMD_STEER_WHEEL].get_value<double>(), 1.4179821977774734,
     COMMON_THRESHOLD);
 
   EXPECT_FALSE(std::isnan((*(controller_->input_ref_.readFromRT()))->twist.linear.x));
-  EXPECT_EQ(controller_->reference_interfaces_.size(), joint_reference_interfaces_.size());
-  for (const auto & interface : controller_->reference_interfaces_)
+  EXPECT_EQ(controller_->ordered_reference_interfaces_.size(), joint_reference_interfaces_.size());
+  for (const auto & interface : controller_->ordered_reference_interfaces_)
   {
-    EXPECT_TRUE(std::isnan(interface));
+    EXPECT_TRUE(interface->holds_value());
+    EXPECT_TRUE(interface->operator bool());
+    EXPECT_TRUE(std::isnan(interface->get_value<double>()));
   }
 }
 
@@ -180,24 +183,27 @@ TEST_F(BicycleSteeringControllerTest, test_update_logic_chained)
   ASSERT_EQ(controller_->on_activate(rclcpp_lifecycle::State()), NODE_SUCCESS);
   ASSERT_TRUE(controller_->is_in_chained_mode());
 
-  controller_->reference_interfaces_[0] = 0.1;
-  controller_->reference_interfaces_[1] = 0.2;
+  controller_->ordered_reference_interfaces_[0]->set_value(0.1);
+  controller_->ordered_reference_interfaces_[1]->set_value(0.2);
 
   ASSERT_EQ(
     controller_->update(rclcpp::Time(0, 0, RCL_ROS_TIME), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
   EXPECT_NEAR(
-    controller_->command_interfaces_[CMD_TRACTION_WHEEL].get_value(), 0.1 / 0.45, COMMON_THRESHOLD);
+    controller_->command_interfaces_[CMD_TRACTION_WHEEL].get_value<double>(), 0.1 / 0.45,
+    COMMON_THRESHOLD);
   EXPECT_NEAR(
-    controller_->command_interfaces_[CMD_STEER_WHEEL].get_value(), 1.4179821977774734,
+    controller_->command_interfaces_[CMD_STEER_WHEEL].get_value<double>(), 1.4179821977774734,
     COMMON_THRESHOLD);
 
   EXPECT_TRUE(std::isnan((*(controller_->input_ref_.readFromRT()))->twist.linear.x));
-  EXPECT_EQ(controller_->reference_interfaces_.size(), joint_reference_interfaces_.size());
-  for (const auto & interface : controller_->reference_interfaces_)
+  EXPECT_EQ(controller_->ordered_reference_interfaces_.size(), joint_reference_interfaces_.size());
+  for (const auto & interface : controller_->ordered_reference_interfaces_)
   {
-    EXPECT_TRUE(std::isnan(interface));
+    EXPECT_TRUE(interface->holds_value());
+    EXPECT_TRUE(interface->operator bool());
+    EXPECT_TRUE(std::isnan(interface->get_value<double>()));
   }
 }
 
@@ -243,9 +249,10 @@ TEST_F(BicycleSteeringControllerTest, receive_message_and_publish_updated_status
     controller_interface::return_type::OK);
 
   EXPECT_NEAR(
-    controller_->command_interfaces_[CMD_TRACTION_WHEEL].get_value(), 0.1 / 0.45, COMMON_THRESHOLD);
+    controller_->command_interfaces_[CMD_TRACTION_WHEEL].get_value<double>(), 0.1 / 0.45,
+    COMMON_THRESHOLD);
   EXPECT_NEAR(
-    controller_->command_interfaces_[CMD_STEER_WHEEL].get_value(), 1.4179821977774734,
+    controller_->command_interfaces_[CMD_STEER_WHEEL].get_value<double>(), 1.4179821977774734,
     COMMON_THRESHOLD);
 
   subscribe_and_get_messages(msg);

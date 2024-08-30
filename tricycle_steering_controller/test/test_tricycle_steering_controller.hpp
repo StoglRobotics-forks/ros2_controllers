@@ -79,7 +79,7 @@ public:
   controller_interface::CallbackReturn on_activate(
     const rclcpp_lifecycle::State & previous_state) override
   {
-    auto ref_itfs = on_export_reference_interfaces();
+    auto ref_itfs = export_reference_interface_descriptions();
     return tricycle_steering_controller::TricycleSteeringController::on_activate(previous_state);
   }
 
@@ -146,39 +146,43 @@ protected:
     }
 
     std::vector<hardware_interface::LoanedCommandInterface> command_ifs;
-    command_itfs_.reserve(joint_command_values_.size());
-    command_ifs.reserve(joint_command_values_.size());
 
-    command_itfs_.emplace_back(hardware_interface::CommandInterface(
-      rear_wheels_names_[0], traction_interface_name_,
-      &joint_command_values_[CMD_TRACTION_RIGHT_WHEEL]));
+    command_itfs_.emplace_back(
+      hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+        rear_wheels_names_[0],
+        hardware_interface::InterfaceInfo(traction_interface_name_, "double", "1.1"))));
     command_ifs.emplace_back(command_itfs_.back());
 
-    command_itfs_.emplace_back(hardware_interface::CommandInterface(
-      rear_wheels_names_[1], steering_interface_name_,
-      &joint_command_values_[CMD_TRACTION_LEFT_WHEEL]));
+    command_itfs_.emplace_back(
+      hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+        rear_wheels_names_[1],
+        hardware_interface::InterfaceInfo(steering_interface_name_, "double", "3.3"))));
     command_ifs.emplace_back(command_itfs_.back());
 
-    command_itfs_.emplace_back(hardware_interface::CommandInterface(
-      front_wheels_names_[0], steering_interface_name_, &joint_command_values_[CMD_STEER_WHEEL]));
+    command_itfs_.emplace_back(
+      hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+        front_wheels_names_[0],
+        hardware_interface::InterfaceInfo(steering_interface_name_, "double", "2.2"))));
     command_ifs.emplace_back(command_itfs_.back());
 
     std::vector<hardware_interface::LoanedStateInterface> state_ifs;
-    state_itfs_.reserve(joint_state_values_.size());
-    state_ifs.reserve(joint_state_values_.size());
 
-    state_itfs_.emplace_back(hardware_interface::StateInterface(
-      rear_wheels_names_[0], traction_interface_name_,
-      &joint_state_values_[STATE_TRACTION_RIGHT_WHEEL]));
+    state_itfs_.emplace_back(
+      hardware_interface::StateInterface(hardware_interface::InterfaceDescription(
+        rear_wheels_names_[0],
+        hardware_interface::InterfaceInfo(traction_interface_name_, "double", "0.5"))));
     state_ifs.emplace_back(state_itfs_.back());
 
-    state_itfs_.emplace_back(hardware_interface::StateInterface(
-      rear_wheels_names_[1], traction_interface_name_,
-      &joint_state_values_[STATE_TRACTION_LEFT_WHEEL]));
+    state_itfs_.emplace_back(
+      hardware_interface::StateInterface(hardware_interface::InterfaceDescription(
+        rear_wheels_names_[1],
+        hardware_interface::InterfaceInfo(traction_interface_name_, "double", "0.5"))));
     state_ifs.emplace_back(state_itfs_.back());
 
-    state_itfs_.emplace_back(hardware_interface::StateInterface(
-      front_wheels_names_[0], steering_interface_name_, &joint_state_values_[STATE_STEER_AXIS]));
+    state_itfs_.emplace_back(
+      hardware_interface::StateInterface(hardware_interface::InterfaceDescription(
+        front_wheels_names_[0],
+        hardware_interface::InterfaceInfo(steering_interface_name_, "double", "0.0"))));
     state_ifs.emplace_back(state_itfs_.back());
 
     controller_->assign_interfaces(std::move(command_ifs), std::move(state_ifs));
@@ -278,8 +282,9 @@ protected:
   double front_wheels_radius_ = 0.45;
   double rear_wheels_radius_ = 0.45;
 
-  std::array<double, 3> joint_state_values_ = {0.5, 0.5, 0.0};
-  std::array<double, 3> joint_command_values_ = {1.1, 3.3, 2.2};
+  const size_t joint_command_values_size_ = 3;
+  const size_t joint_state_values_size_ = 3;
+
   std::array<std::string, 2> joint_reference_interfaces_ = {"linear/velocity", "angular/velocity"};
   std::string steering_interface_name_ = "position";
   // defined in setup

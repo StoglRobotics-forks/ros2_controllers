@@ -32,7 +32,7 @@ TEST_F(SteeringControllersLibraryTest, check_exported_interfaces)
   ASSERT_EQ(controller_->on_configure(rclcpp_lifecycle::State()), NODE_SUCCESS);
 
   auto cmd_if_conf = controller_->command_interface_configuration();
-  ASSERT_EQ(cmd_if_conf.names.size(), joint_command_values_.size());
+  ASSERT_EQ(cmd_if_conf.names.size(), joint_command_size_);
   EXPECT_EQ(
     cmd_if_conf.names[CMD_TRACTION_RIGHT_WHEEL],
     rear_wheels_names_[0] + "/" + traction_interface_name_);
@@ -48,7 +48,7 @@ TEST_F(SteeringControllersLibraryTest, check_exported_interfaces)
   EXPECT_EQ(cmd_if_conf.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   auto state_if_conf = controller_->state_interface_configuration();
-  ASSERT_EQ(state_if_conf.names.size(), joint_state_values_.size());
+  ASSERT_EQ(state_if_conf.names.size(), joint_state_size_);
   EXPECT_EQ(
     state_if_conf.names[STATE_TRACTION_RIGHT_WHEEL],
     controller_->rear_wheels_state_names_[0] + "/" + traction_interface_name_);
@@ -70,9 +70,9 @@ TEST_F(SteeringControllersLibraryTest, check_exported_interfaces)
   {
     const std::string ref_itf_name =
       std::string(controller_->get_node()->get_name()) + "/" + joint_reference_interfaces_[i];
-    EXPECT_EQ(reference_interfaces[i].get_name(), ref_itf_name);
-    EXPECT_EQ(reference_interfaces[i].get_prefix_name(), controller_->get_node()->get_name());
-    EXPECT_EQ(reference_interfaces[i].get_interface_name(), joint_reference_interfaces_[i]);
+    EXPECT_EQ(reference_interfaces[i]->get_name(), ref_itf_name);
+    EXPECT_EQ(reference_interfaces[i]->get_prefix_name(), controller_->get_node()->get_name());
+    EXPECT_EQ(reference_interfaces[i]->get_interface_name(), joint_reference_interfaces_[i]);
   }
 }
 
@@ -91,9 +91,11 @@ TEST_F(SteeringControllersLibraryTest, test_both_update_methods_for_ref_timeout)
   ASSERT_EQ(controller_->on_activate(rclcpp_lifecycle::State()), NODE_SUCCESS);
   ASSERT_FALSE(controller_->is_in_chained_mode());
 
-  for (const auto & interface : controller_->reference_interfaces_)
+  for (const auto & interface : controller_->ordered_reference_interfaces_)
   {
-    EXPECT_TRUE(std::isnan(interface));
+    EXPECT_TRUE(interface->holds_value());
+    EXPECT_TRUE(interface->operator bool());
+    EXPECT_TRUE(std::isnan(interface->get_value<double>()));
   }
 
   // set command statically
@@ -127,24 +129,25 @@ TEST_F(SteeringControllersLibraryTest, test_both_update_methods_for_ref_timeout)
     controller_->update(controller_->get_node()->now(), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
-  EXPECT_TRUE(std::isnan(controller_->reference_interfaces_[0]));
-  EXPECT_TRUE(std::isnan(controller_->reference_interfaces_[1]));
-  for (const auto & interface : controller_->reference_interfaces_)
+  for (const auto & interface : controller_->ordered_reference_interfaces_)
   {
-    EXPECT_TRUE(std::isnan(interface));
+    EXPECT_TRUE(interface->holds_value());
+    EXPECT_TRUE(interface->operator bool());
+    EXPECT_TRUE(std::isnan(interface->get_value<double>()));
   }
   EXPECT_TRUE(std::isnan((*(controller_->input_ref_.readFromNonRT()))->twist.linear.x));
   EXPECT_TRUE(std::isnan((*(controller_->input_ref_.readFromNonRT()))->twist.angular.z));
 
-  EXPECT_TRUE(std::isnan(controller_->reference_interfaces_[0]));
-  for (const auto & interface : controller_->reference_interfaces_)
+  for (const auto & interface : controller_->ordered_reference_interfaces_)
   {
-    EXPECT_TRUE(std::isnan(interface));
+    EXPECT_TRUE(interface->holds_value());
+    EXPECT_TRUE(interface->operator bool());
+    EXPECT_TRUE(std::isnan(interface->get_value<double>()));
   }
 
   for (size_t i = 0; i < controller_->command_interfaces_.size(); ++i)
   {
-    EXPECT_EQ(controller_->command_interfaces_[i].get_value(), 0);
+    EXPECT_EQ(controller_->command_interfaces_[i].get_value<double>(), 0.0);
   }
 
   // case 2 position_feedback = true
@@ -168,24 +171,25 @@ TEST_F(SteeringControllersLibraryTest, test_both_update_methods_for_ref_timeout)
     controller_->update(controller_->get_node()->now(), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
-  EXPECT_TRUE(std::isnan(controller_->reference_interfaces_[0]));
-  EXPECT_TRUE(std::isnan(controller_->reference_interfaces_[1]));
-  for (const auto & interface : controller_->reference_interfaces_)
+  for (const auto & interface : controller_->ordered_reference_interfaces_)
   {
-    EXPECT_TRUE(std::isnan(interface));
+    EXPECT_TRUE(interface->holds_value());
+    EXPECT_TRUE(interface->operator bool());
+    EXPECT_TRUE(std::isnan(interface->get_value<double>()));
   }
   EXPECT_TRUE(std::isnan((*(controller_->input_ref_.readFromNonRT()))->twist.linear.x));
   EXPECT_TRUE(std::isnan((*(controller_->input_ref_.readFromNonRT()))->twist.angular.z));
 
-  EXPECT_TRUE(std::isnan(controller_->reference_interfaces_[0]));
-  for (const auto & interface : controller_->reference_interfaces_)
+  for (const auto & interface : controller_->ordered_reference_interfaces_)
   {
-    EXPECT_TRUE(std::isnan(interface));
+    EXPECT_TRUE(interface->holds_value());
+    EXPECT_TRUE(interface->operator bool());
+    EXPECT_TRUE(std::isnan(interface->get_value<double>()));
   }
 
   for (size_t i = 0; i < controller_->command_interfaces_.size(); ++i)
   {
-    EXPECT_EQ(controller_->command_interfaces_[i].get_value(), 0);
+    EXPECT_EQ(controller_->command_interfaces_[i].get_value<double>(), 0);
   }
 }
 

@@ -174,13 +174,15 @@ protected:
   void assign_interfaces()
   {
     std::vector<hardware_interface::LoanedCommandInterface> command_ifs;
-    command_itfs_.reserve(joint_command_values_.size());
-    command_ifs.reserve(joint_command_values_.size());
+    command_itfs_.reserve(initial_joint_command_values_.size());
+    command_ifs.reserve(initial_joint_command_values_.size());
 
-    for (auto i = 0u; i < joint_command_values_.size(); ++i)
+    for (auto i = 0u; i < initial_joint_command_values_.size(); ++i)
     {
-      command_itfs_.emplace_back(hardware_interface::CommandInterface(
-        joint_names_[i], command_interface_types_[0], &joint_command_values_[i]));
+      command_itfs_.emplace_back(hardware_interface::InterfaceDescription(
+        joint_names_[i], hardware_interface::InterfaceInfo(
+                           command_interface_types_[0], "double",
+                           std::to_string(initial_joint_command_values_[i]))));
       command_ifs.emplace_back(command_itfs_.back());
     }
 
@@ -188,14 +190,16 @@ protected:
     fts_state_names_ = sc_fts.get_state_interface_names();
     std::vector<hardware_interface::LoanedStateInterface> state_ifs;
 
-    const size_t num_state_ifs = joint_state_values_.size() + fts_state_names_.size();
+    const size_t num_state_ifs = initial_joint_state_values_.size() + fts_state_names_.size();
     state_itfs_.reserve(num_state_ifs);
     state_ifs.reserve(num_state_ifs);
 
-    for (auto i = 0u; i < joint_state_values_.size(); ++i)
+    for (auto i = 0u; i < initial_joint_state_values_.size(); ++i)
     {
-      state_itfs_.emplace_back(hardware_interface::StateInterface(
-        joint_names_[i], state_interface_types_[0], &joint_state_values_[i]));
+      state_itfs_.emplace_back(hardware_interface::InterfaceDescription(
+        joint_names_[i],
+        hardware_interface::InterfaceInfo(
+          state_interface_types_[0], std::to_string(initial_joint_command_values_[i]))));
       state_ifs.emplace_back(state_itfs_.back());
     }
 
@@ -204,8 +208,10 @@ protected:
 
     for (auto i = 0u; i < fts_state_names_.size(); ++i)
     {
-      state_itfs_.emplace_back(hardware_interface::StateInterface(
-        ft_sensor_name_, fts_itf_names[i], &fts_state_values_[i]));
+      state_itfs_.emplace_back(hardware_interface::InterfaceDescription(
+        ft_sensor_name_,
+        hardware_interface::InterfaceInfo(
+          fts_itf_names[i], "double", std::to_string(initial_fts_state_values_[i]))));
       state_ifs.emplace_back(state_itfs_.back());
     }
 
@@ -344,7 +350,7 @@ protected:
     trajectory_point.velocities.resize(num_joints, 0.0);
     for (auto index = 0u; index < num_joints; ++index)
     {
-      trajectory_point.positions.emplace_back(joint_state_values_[index]);
+      trajectory_point.positions.emplace_back(initial_joint_state_values_[index]);
     }
     joint_msg = trajectory_point;
 
@@ -380,9 +386,9 @@ protected:
                                                      2.828427, 2.828427, 2.828427};
   std::array<double, 6> admittance_stiffness_ = {214.1, 214.2, 214.3, 214.4, 214.5, 214.6};
 
-  std::array<double, 6> joint_command_values_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  std::array<double, 6> joint_state_values_ = {1.1, 2.2, 3.3, 4.4, 5.5, 6.6};
-  std::array<double, 6> fts_state_values_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  const std::array<double, 6> initial_joint_command_values_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  const std::array<double, 6> initial_joint_state_values_ = {1.1, 2.2, 3.3, 4.4, 5.5, 6.6};
+  const std::array<double, 6> initial_fts_state_values_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   std::vector<std::string> fts_state_names_;
 
   std::vector<hardware_interface::StateInterface> state_itfs_;

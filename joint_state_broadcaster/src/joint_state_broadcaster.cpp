@@ -356,10 +356,10 @@ controller_interface::return_type JointStateBroadcaster::update(
       interface_name = map_interface_to_joint_state_[interface_name];
     }
     name_if_value_mapping_[state_interface.get_prefix_name()][interface_name] =
-      state_interface.get_value();
+      state_interface.get_value<double>();
     RCLCPP_DEBUG(
       get_node()->get_logger(), "%s: %f\n", state_interface.get_name().c_str(),
-      state_interface.get_value());
+      state_interface.get_value<double>());
   }
 
   if (realtime_joint_state_publisher_ && realtime_joint_state_publisher_->trylock())

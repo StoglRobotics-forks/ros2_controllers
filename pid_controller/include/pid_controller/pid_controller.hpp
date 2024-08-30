@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "control_msgs/msg/multi_dof_command.hpp"
@@ -91,8 +92,11 @@ protected:
   pid_controller::Params params_;
 
   std::vector<std::string> reference_and_state_dof_names_;
-  size_t dof_;
-  std::vector<double> measured_state_values_;
+  std::string itf_;
+  std::string itf_dot_;
+  std::string node_name;
+  std::vector<std::string> dof_names_;
+  std::unordered_map<std::string, double> measured_state_values_;
 
   using PidPtr = std::shared_ptr<control_toolbox::PidROS>;
   std::vector<PidPtr> pids_;
@@ -114,8 +118,12 @@ protected:
   rclcpp::Publisher<ControllerStateMsg>::SharedPtr s_publisher_;
   std::unique_ptr<ControllerStatePublisher> state_publisher_;
 
+  std::vector<hardware_interface::InterfaceDescription> export_state_interface_descriptions()
+    override;
+
   // override methods from ChainableControllerInterface
-  std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
+  std::vector<hardware_interface::InterfaceDescription> export_reference_interface_descriptions()
+    override;
 
   bool on_set_chained_mode(bool chained_mode) override;
 

@@ -151,9 +151,10 @@ controller_interface::return_type DiffDriveController::update(
     double right_feedback_mean = 0.0;
     for (size_t index = 0; index < static_cast<size_t>(wheels_per_side_); ++index)
     {
-      const double left_feedback = registered_left_wheel_handles_[index].feedback.get().get_value();
+      const double left_feedback =
+        registered_left_wheel_handles_[index].feedback.get().get_value<double>();
       const double right_feedback =
-        registered_right_wheel_handles_[index].feedback.get().get_value();
+        registered_right_wheel_handles_[index].feedback.get().get_value<double>();
 
       if (std::isnan(left_feedback) || std::isnan(right_feedback))
       {

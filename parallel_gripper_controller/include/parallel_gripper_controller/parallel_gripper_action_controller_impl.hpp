@@ -59,8 +59,8 @@ controller_interface::return_type GripperActionController::update(
 {
   command_struct_rt_ = *(command_.readFromRT());
 
-  const double current_position = joint_position_state_interface_->get().get_value();
-  const double current_velocity = joint_velocity_state_interface_->get().get_value();
+  const double current_position = joint_position_state_interface_->get().get_value<double>();
+  const double current_velocity = joint_velocity_state_interface_->get().get_value<double>();
   const double error_position = command_struct_rt_.position_cmd_ - current_position;
 
   check_for_success(get_node()->now(), error_position, current_position, current_velocity);
@@ -168,7 +168,7 @@ rclcpp_action::CancelResponse GripperActionController::cancel_callback(
 
 void GripperActionController::set_hold_position()
 {
-  command_struct_.position_cmd_ = joint_position_state_interface_->get().get_value();
+  command_struct_.position_cmd_ = joint_position_state_interface_->get().get_value<double>();
   command_struct_.max_effort_ = params_.max_effort;
   command_struct_.max_velocity_ = params_.max_velocity;
   command_.writeFromNonRT(command_struct_);
@@ -323,7 +323,7 @@ controller_interface::CallbackReturn GripperActionController::on_activate(
   }
 
   // Command - non RT version
-  command_struct_.position_cmd_ = joint_position_state_interface_->get().get_value();
+  command_struct_.position_cmd_ = joint_position_state_interface_->get().get_value<double>();
   command_struct_.max_effort_ = params_.max_effort;
   command_struct_.max_velocity_ = params_.max_velocity;
   command_.initRT(command_struct_);

@@ -116,8 +116,8 @@ controller_interface::return_type TricycleController::update(
   TwistStamped command = *last_command_msg;
   double & linear_command = command.twist.linear.x;
   double & angular_command = command.twist.angular.z;
-  double Ws_read = traction_joint_[0].velocity_state.get().get_value();     // in radians/s
-  double alpha_read = steering_joint_[0].position_state.get().get_value();  // in radians
+  double Ws_read = traction_joint_[0].velocity_state.get().get_value<double>();     // in radians/s
+  double alpha_read = steering_joint_[0].position_state.get().get_value<double>();  // in radians
 
   if (params_.open_loop)
   {

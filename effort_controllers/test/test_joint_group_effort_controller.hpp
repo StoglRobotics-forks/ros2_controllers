@@ -23,11 +23,14 @@
 
 #include "effort_controllers/joint_group_effort_controller.hpp"
 #include "hardware_interface/handle.hpp"
+#include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/executors/single_threaded_executor.hpp"
 
 using hardware_interface::CommandInterface;
 using hardware_interface::HW_IF_EFFORT;
+using hardware_interface::InterfaceDescription;
+using hardware_interface::InterfaceInfo;
 // subclassing and friending so we can access member variables
 class FriendJointGroupEffortController : public effort_controllers::JointGroupEffortController
 {
@@ -53,11 +56,13 @@ protected:
 
   // dummy joint state values used for tests
   const std::vector<std::string> joint_names_ = {"joint1", "joint2", "joint3"};
-  std::vector<double> joint_commands_ = {1.1, 2.1, 3.1};
 
-  CommandInterface joint_1_cmd_{joint_names_[0], HW_IF_EFFORT, &joint_commands_[0]};
-  CommandInterface joint_2_cmd_{joint_names_[1], HW_IF_EFFORT, &joint_commands_[1]};
-  CommandInterface joint_3_cmd_{joint_names_[2], HW_IF_EFFORT, &joint_commands_[2]};
+  CommandInterface joint_1_cmd_{
+    InterfaceDescription(joint_names_[0], InterfaceInfo(HW_IF_EFFORT, "1.1", "double"))};
+  CommandInterface joint_2_cmd_{
+    InterfaceDescription(joint_names_[1], InterfaceInfo(HW_IF_EFFORT, "2.1", "double"))};
+  CommandInterface joint_3_cmd_{
+    InterfaceDescription(joint_names_[2], InterfaceInfo(HW_IF_EFFORT, "3.1", "double"))};
   rclcpp::executors::SingleThreadedExecutor executor;
 };
 

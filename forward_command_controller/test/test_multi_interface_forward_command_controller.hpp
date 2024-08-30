@@ -25,6 +25,7 @@
 
 #include "forward_command_controller/multi_interface_forward_command_controller.hpp"
 #include "hardware_interface/handle.hpp"
+#include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/executors/single_threaded_executor.hpp"
 
@@ -32,6 +33,8 @@ using hardware_interface::CommandInterface;
 using hardware_interface::HW_IF_EFFORT;
 using hardware_interface::HW_IF_POSITION;
 using hardware_interface::HW_IF_VELOCITY;
+using hardware_interface::InterfaceDescription;
+using hardware_interface::InterfaceInfo;
 
 // subclassing and friending so we can access member variables
 class FriendMultiInterfaceForwardCommandController
@@ -71,13 +74,12 @@ protected:
   // dummy joint state value used for tests
   const std::string joint_name_ = "joint1";
 
-  double pos_cmd_ = 1.1;
-  double vel_cmd_ = 2.1;
-  double eff_cmd_ = 3.1;
-
-  CommandInterface joint_1_pos_cmd_{joint_name_, HW_IF_POSITION, &pos_cmd_};
-  CommandInterface joint_1_vel_cmd_{joint_name_, HW_IF_VELOCITY, &vel_cmd_};
-  CommandInterface joint_1_eff_cmd_{joint_name_, HW_IF_EFFORT, &eff_cmd_};
+  CommandInterface joint_1_pos_cmd_{
+    InterfaceDescription(joint_name_, InterfaceInfo(HW_IF_POSITION, "1.1", "double"))};
+  CommandInterface joint_1_vel_cmd_{
+    InterfaceDescription(joint_name_, InterfaceInfo(HW_IF_VELOCITY, "2.1", "double"))};
+  CommandInterface joint_1_eff_cmd_{
+    InterfaceDescription(joint_name_, InterfaceInfo(HW_IF_EFFORT, "3.1", "double"))};
   rclcpp::executors::SingleThreadedExecutor executor;
 };
 

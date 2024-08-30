@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/loaned_command_interface.hpp"
 #include "hardware_interface/loaned_state_interface.hpp"
 #include "pid_controller/pid_controller.hpp"
@@ -70,7 +71,7 @@ public:
   controller_interface::CallbackReturn on_activate(
     const rclcpp_lifecycle::State & previous_state) override
   {
-    auto ref_itfs = on_export_reference_interfaces();
+    auto ref_itfs = export_state_interface_descriptions();
     return pid_controller::PidController::on_activate(previous_state);
   }
 
@@ -111,8 +112,6 @@ public:
     dof_names_ = {"joint1"};
     command_interface_ = "position";
     state_interfaces_ = {"position"};
-    dof_state_values_ = {1.1};
-    dof_command_values_ = {101.101};
     reference_and_state_dof_names_ = {"joint1state"};
 
     // initialize controller
@@ -144,8 +143,10 @@ protected:
 
     for (size_t i = 0; i < dof_names_.size(); ++i)
     {
-      command_itfs_.emplace_back(hardware_interface::CommandInterface(
-        dof_names_[i], command_interface_, &dof_command_values_[i]));
+      command_itfs_.emplace_back(
+        hardware_interface::CommandInterface(hardware_interface::InterfaceDescription(
+          dof_names_[i],
+          hardware_interface::InterfaceInfo(command_interface_, "double", "101.101"))));
       command_ifs.emplace_back(command_itfs_.back());
     }
 
@@ -158,7 +159,8 @@ protected:
       for (const auto & dof_name : dof_names_)
       {
         state_itfs_.emplace_back(
-          hardware_interface::StateInterface(dof_name, interface, &dof_state_values_[index]));
+          hardware_interface::StateInterface(hardware_interface::InterfaceDescription(
+            dof_name, hardware_interface::InterfaceInfo(interface, "double", "1.1"))));
         state_ifs.emplace_back(state_itfs_.back());
         ++index;
       }
@@ -264,8 +266,6 @@ protected:
   std::vector<std::string> dof_names_;
   std::string command_interface_;
   std::vector<std::string> state_interfaces_;
-  std::vector<double> dof_state_values_;
-  std::vector<double> dof_command_values_;
   std::vector<std::string> reference_and_state_dof_names_;
 
   std::vector<hardware_interface::StateInterface> state_itfs_;

@@ -53,7 +53,7 @@ TEST_F(AckermannSteeringControllerTest, check_exported_interfaces)
   ASSERT_EQ(controller_->on_configure(rclcpp_lifecycle::State()), NODE_SUCCESS);
 
   auto cmd_if_conf = controller_->command_interface_configuration();
-  ASSERT_EQ(cmd_if_conf.names.size(), joint_command_values_.size());
+  ASSERT_EQ(cmd_if_conf.names.size(), joint_command_values_size_);
   EXPECT_EQ(
     cmd_if_conf.names[CMD_TRACTION_RIGHT_WHEEL],
     preceeding_prefix_ + "/" + rear_wheels_names_[0] + "/" + traction_interface_name_);
@@ -69,7 +69,7 @@ TEST_F(AckermannSteeringControllerTest, check_exported_interfaces)
   EXPECT_EQ(cmd_if_conf.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   auto state_if_conf = controller_->state_interface_configuration();
-  ASSERT_EQ(state_if_conf.names.size(), joint_state_values_.size());
+  ASSERT_EQ(state_if_conf.names.size(), joint_state_values_size_);
   EXPECT_EQ(
     state_if_conf.names[STATE_TRACTION_RIGHT_WHEEL],
     controller_->rear_wheels_state_names_[0] + "/" + traction_interface_name_);
@@ -85,7 +85,7 @@ TEST_F(AckermannSteeringControllerTest, check_exported_interfaces)
   EXPECT_EQ(state_if_conf.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   // check ref itfs
-  auto reference_interfaces = controller_->export_reference_interfaces();
+  auto reference_interfaces = controller_->export_reference_interface_descriptions();
   ASSERT_EQ(reference_interfaces.size(), joint_reference_interfaces_.size());
   for (size_t i = 0; i < joint_reference_interfaces_.size(); ++i)
   {

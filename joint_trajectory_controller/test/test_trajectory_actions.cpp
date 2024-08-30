@@ -59,13 +59,11 @@ protected:
   }
 
   void SetUpExecutor(
-    const std::vector<rclcpp::Parameter> & parameters = {},
-    bool separate_cmd_and_state_values = false, double kp = 0.0, double ff = 1.0)
+    const std::vector<rclcpp::Parameter> & parameters = {}, double kp = 0.0, double ff = 1.0)
   {
     setup_executor_ = true;
 
-    SetUpAndActivateTrajectoryController(
-      executor_, parameters, separate_cmd_and_state_values, kp, ff);
+    SetUpAndActivateTrajectoryController(executor_, parameters, kp, ff);
 
     SetUpActionClient();
 
@@ -221,7 +219,7 @@ TEST_P(TestTrajectoryActionsTestParameterized, test_success_single_point_sendgoa
   // deactivate velocity tolerance
   std::vector<rclcpp::Parameter> params = {
     rclcpp::Parameter("constraints.stopped_velocity_tolerance", 0.0)};
-  SetUpExecutor(params, false, 1.0, 0.0);
+  SetUpExecutor(params, 1.0, 0.0);
   SetUpControllerHardware();
 
   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
@@ -257,7 +255,7 @@ TEST_P(TestTrajectoryActionsTestParameterized, test_success_single_point_with_ve
   std::vector<rclcpp::Parameter> params = {
     rclcpp::Parameter("constraints.stopped_velocity_tolerance", 0.0),
     rclcpp::Parameter("allow_nonzero_velocity_at_trajectory_end", true)};
-  SetUpExecutor(params, false, 1.0, 0.0);
+  SetUpExecutor(params, 1.0, 0.0);
   SetUpControllerHardware();
 
   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
@@ -294,7 +292,7 @@ TEST_P(TestTrajectoryActionsTestParameterized, test_success_multi_point_sendgoal
   // deactivate velocity tolerance
   std::vector<rclcpp::Parameter> params = {
     rclcpp::Parameter("constraints.stopped_velocity_tolerance", 0.0)};
-  SetUpExecutor({params}, false, 1.0, 0.0);
+  SetUpExecutor({params}, 1.0, 0.0);
   SetUpControllerHardware();
 
   // add feedback
@@ -341,7 +339,7 @@ TEST_P(TestTrajectoryActionsTestParameterized, test_success_multi_point_with_vel
   std::vector<rclcpp::Parameter> params = {
     rclcpp::Parameter("constraints.stopped_velocity_tolerance", 0.0),
     rclcpp::Parameter("allow_nonzero_velocity_at_trajectory_end", true)};
-  SetUpExecutor(params, false, 1.0, 0.0);
+  SetUpExecutor(params, 1.0, 0.0);
   SetUpControllerHardware();
 
   // add feedback
@@ -826,7 +824,9 @@ TEST_P(TestTrajectoryActionsTestParameterized, test_cancel_hold_position)
   EXPECT_EQ(
     control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
 
-  std::vector<double> cancelled_position{joint_pos_[0], joint_pos_[1], joint_pos_[2]};
+  std::vector<double> cancelled_position{
+    pos_state_interfaces_[0].get_value<double>(), pos_state_interfaces_[1].get_value<double>(),
+    pos_state_interfaces_[2].get_value<double>()};
 
   // run an update
   updateControllerAsync(rclcpp::Duration::from_seconds(0.01));
