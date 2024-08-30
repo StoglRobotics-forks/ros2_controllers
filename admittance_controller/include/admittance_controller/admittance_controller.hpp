@@ -89,7 +89,7 @@ public:
 protected:
   std::vector<hardware_interface::InterfaceDescription> export_state_interface_descriptions()
     override;
-  std::vector<hardware_interface::CommandInterface> export_reference_interface_descriptions()
+  std::vector<hardware_interface::InterfaceDescription> export_reference_interface_descriptions()
     override;
 
   controller_interface::return_type update_reference_from_subscribers(
@@ -124,8 +124,8 @@ protected:
   // internal reference values
   const std::vector<std::string> allowed_reference_interfaces_types_ = {
     hardware_interface::HW_IF_POSITION, hardware_interface::HW_IF_VELOCITY};
-  std::vector<std::reference_wrapper<double>> position_reference_;
-  std::vector<std::reference_wrapper<double>> velocity_reference_;
+  std::vector<std::string> position_reference_names_;
+  std::vector<std::string> velocity_reference_names_;
 
   // Admittance rule and dependent variables;
   std::unique_ptr<admittance_controller::AdmittanceRule> admittance_;

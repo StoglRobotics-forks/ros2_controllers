@@ -97,8 +97,14 @@ controller_interface::InterfaceConfiguration AdmittanceController::state_interfa
     controller_interface::interface_configuration_type::INDIVIDUAL, state_interfaces_config_names};
 }
 
-std::vector<hardware_interface::CommandInterface>
-AdmittanceController::on_export_reference_interfaces()
+std::vector<hardware_interface::InterfaceDescription>
+AdmittanceController::export_state_interface_descriptions()
+{
+  return {};
+}
+
+std::vector<hardware_interface::InterfaceDescription>
+AdmittanceController::export_reference_interface_descriptions()
 {
   // create CommandInterface interfaces that other controllers will be able to chain with
   if (!admittance_)
@@ -106,34 +112,32 @@ AdmittanceController::on_export_reference_interfaces()
     return {};
   }
 
-  std::vector<hardware_interface::CommandInterface> chainable_command_interfaces;
+  std::vector<hardware_interface::InterfaceDescription> chainable_command_interfaces;
   const auto num_chainable_interfaces =
     admittance_->parameters_.chainable_command_interfaces.size() *
     admittance_->parameters_.joints.size();
 
   // allocate dynamic memory
   chainable_command_interfaces.reserve(num_chainable_interfaces);
-  reference_interfaces_.resize(num_chainable_interfaces, std::numeric_limits<double>::quiet_NaN());
-  position_reference_ = {};
-  velocity_reference_ = {};
+  position_reference_names_ = {};
+  velocity_reference_names_ = {};
 
-  // assign reference interfaces
-  auto index = 0ul;
+  const auto prefix = std::string(get_node()->get_name());
+  // create reference interfaces
   for (const auto & interface : allowed_reference_interfaces_types_)
   {
     for (const auto & joint : admittance_->parameters_.joints)
     {
+      const auto itf_name = joint + "/" + interface;
+      chainable_command_interfaces.emplace_back(
+        prefix, hardware_interface::InterfaceInfo(itf_name, "double"));
+      // add reference interface names in order to position or velocity
       if (hardware_interface::HW_IF_POSITION == interface)
-        position_reference_.emplace_back(reference_interfaces_[index]);
+        position_reference_names_.push_back(chainable_command_interfaces.back().get_name());
       else if (hardware_interface::HW_IF_VELOCITY == interface)
       {
-        velocity_reference_.emplace_back(reference_interfaces_[index]);
+        velocity_reference_names_.push_back(chainable_command_interfaces.back().get_name());
       }
-      const auto full_name = joint + "/" + interface;
-      chainable_command_interfaces.emplace_back(hardware_interface::CommandInterface(
-        std::string(get_node()->get_name()), full_name, reference_interfaces_.data() + index));
-
-      index++;
     }
   }
 
@@ -370,11 +374,13 @@ controller_interface::return_type AdmittanceController::update_reference_from_su
   {
     for (size_t i = 0; i < joint_command_msg_->positions.size(); ++i)
     {
-      position_reference_[i].get() = joint_command_msg_->positions[i];
+      reference_interfaces_.at(position_reference_names_[i])
+        ->set_value(joint_command_msg_->positions[i]);
     }
     for (size_t i = 0; i < joint_command_msg_->velocities.size(); ++i)
     {
-      velocity_reference_[i].get() = joint_command_msg_->velocities[i];
+      reference_interfaces_.at(velocity_reference_names_[i])
+        ->set_value(joint_command_msg_->velocities[i]);
     }
   }
 
@@ -424,8 +430,10 @@ controller_interface::CallbackReturn AdmittanceController::on_deactivate(
   // reset to prevent stale references
   for (size_t i = 0; i < num_joints_; i++)
   {
-    position_reference_[i].get() = std::numeric_limits<double>::quiet_NaN();
-    velocity_reference_[i].get() = std::numeric_limits<double>::quiet_NaN();
+    reference_interfaces_.at(position_reference_names_[i])
+      ->set_value(std::numeric_limits<double>::quiet_NaN());
+    reference_interfaces_.at(velocity_reference_names_[i])
+      ->set_value(std::numeric_limits<double>::quiet_NaN());
   }
 
   for (size_t index = 0; index < allowed_interface_types_.size(); ++index)
@@ -473,19 +481,19 @@ void AdmittanceController::read_state_from_hardware(
     if (has_position_state_interface_)
     {
       state_current.positions[joint_ind] =
-        state_interfaces_[pos_ind * num_joints_ + joint_ind].get_value();
+        state_interfaces_[pos_ind * num_joints_ + joint_ind].get_value<double>();
       nan_position |= std::isnan(state_current.positions[joint_ind]);
     }
     else if (has_velocity_state_interface_)
     {
       state_current.velocities[joint_ind] =
-        state_interfaces_[vel_ind * num_joints_ + joint_ind].get_value();
+        state_interfaces_[vel_ind * num_joints_ + joint_ind].get_value<double>();
       nan_velocity |= std::isnan(state_current.velocities[joint_ind]);
     }
     else if (has_acceleration_state_interface_)
     {
       state_current.accelerations[joint_ind] =
-        state_interfaces_[acc_ind * num_joints_ + joint_ind].get_value();
+        state_interfaces_[acc_ind * num_joints_ + joint_ind].get_value<double>();
       nan_acceleration |= std::isnan(state_current.accelerations[joint_ind]);
     }
   }
@@ -551,18 +559,22 @@ void AdmittanceController::read_state_reference_interfaces(
   for (size_t i = 0; i < num_joints_; ++i)
   {
     // update position
-    if (std::isnan(position_reference_[i]))
+    if (std::isnan(reference_interfaces_.at(position_reference_names_[i])->get_value<double>()))
     {
-      position_reference_[i].get() = last_reference_.positions[i];
+      reference_interfaces_.at(position_reference_names_[i])
+        ->set_value(last_reference_.positions[i]);
     }
-    state_reference.positions[i] = position_reference_[i];
+    state_reference.positions[i] =
+      reference_interfaces_.at(position_reference_names_[i])->get_value<double>();
 
     // update velocity
-    if (std::isnan(velocity_reference_[i]))
+    if (std::isnan(reference_interfaces_.at(velocity_reference_names_[i])->get_value<double>()))
     {
-      velocity_reference_[i].get() = last_reference_.velocities[i];
+      reference_interfaces_.at(velocity_reference_names_[i])
+        ->set_value(last_reference_.velocities[i]);
     }
-    state_reference.velocities[i] = velocity_reference_[i];
+    state_reference.velocities[i] =
+      reference_interfaces_.at(velocity_reference_names_[i])->get_value<double>();
   }
 
   last_reference_.positions = state_reference.positions;

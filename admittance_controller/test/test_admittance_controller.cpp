@@ -154,7 +154,7 @@ TEST_F(AdmittanceControllerTest, check_interfaces)
   ASSERT_EQ(controller_->on_configure(rclcpp_lifecycle::State()), NODE_SUCCESS);
 
   auto command_interfaces = controller_->command_interface_configuration();
-  ASSERT_EQ(command_interfaces.names.size(), joint_command_values_.size());
+  ASSERT_EQ(command_interfaces.names.size(), initial_joint_command_values_.size());
   EXPECT_EQ(
     command_interfaces.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
@@ -162,12 +162,14 @@ TEST_F(AdmittanceControllerTest, check_interfaces)
     controller_->command_interfaces_.size(), command_interface_types_.size() * joint_names_.size());
 
   auto state_interfaces = controller_->state_interface_configuration();
-  ASSERT_EQ(state_interfaces.names.size(), joint_state_values_.size() + fts_state_values_.size());
+  ASSERT_EQ(
+    state_interfaces.names.size(),
+    initial_joint_state_values_.size() + initial_fts_state_values_.size());
   EXPECT_EQ(state_interfaces.type, controller_interface::interface_configuration_type::INDIVIDUAL);
 
   ASSERT_EQ(
     controller_->state_interfaces_.size(),
-    state_interface_types_.size() * joint_names_.size() + fts_state_values_.size());
+    state_interface_types_.size() * joint_names_.size() + initial_fts_state_values_.size());
 }
 
 TEST_F(AdmittanceControllerTest, activate_success)
@@ -264,9 +266,10 @@ TEST_F(AdmittanceControllerTest, receive_message_and_publish_updated_status)
     controller_interface::return_type::OK);
 
   // After first update state, commanded position should be near the start state
-  for (auto i = 0ul; i < joint_state_values_.size(); i++)
+  for (auto i = 0ul; i < state_itfs_.size(); i++)
   {
-    ASSERT_NEAR(joint_state_values_[i], joint_command_values_[i], COMMON_THRESHOLD);
+    ASSERT_NEAR(
+      state_itfs_[i].get_value<double>(), command_itfs_[i].get_value<double>(), COMMON_THRESHOLD);
   }
 
   ControllerStateMsg msg;
@@ -282,7 +285,8 @@ TEST_F(AdmittanceControllerTest, receive_message_and_publish_updated_status)
     controller_->update(rclcpp::Time(0), rclcpp::Duration::from_seconds(0.01)),
     controller_interface::return_type::OK);
 
-  EXPECT_NEAR(joint_command_values_[0], joint_state_values_[0], COMMON_THRESHOLD);
+  EXPECT_NEAR(
+    command_itfs_[0].get_value<double>(), state_itfs_[0].get_value<double>(), COMMON_THRESHOLD);
 
   subscribe_and_get_messages(msg);
 }
