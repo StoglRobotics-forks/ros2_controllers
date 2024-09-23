@@ -111,31 +111,14 @@ public:
   controller_interface::return_type reset(const size_t num_joints);
 
   /**
-   * Calculate transforms needed for admittance control using the loader kinematics plugin. If
+   * Calculate all transforms needed for admittance control using the loader kinematics plugin. If
    * the transform does not exist in the kinematics model, then TF will be used for lookup. The
-   * return value is true if all transformation are calculated without an error 
-   * \param[in] current_joint_state current joint state of the robot 
-   * \param[out] success true if no calls to the kinematics interface fail
-   */  
-  bool get_current_state_transforms(
-    const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state);
-  /**
-   * Calculate ft_sensor_link -> base_link transform needed for admittance control using the loader kinematics plugin. If
-   * the transform does not exist in the kinematics model, then TF will be used for lookup. The
-   * return value is true if all transformation are calculated without an error  
-   * \param[in] reference_pose input ft sensor reference pose
-   * \param[out] success true if no calls to the kinematics interface fail
+   * return value is true if all transformation are calculated without an error \param[in]
+   * current_joint_state current joint state of the robot \param[in] reference_joint_state input
+   * joint state reference \param[out] success true if no calls to the kinematics interface fail
    */
-  bool get_reference_state_transforms(
-    const geometry_msgs::msg::PoseStamped & reference_pose);
-  /**
-   * Calculate ft_sensor_link -> base_link transform needed for admittance control using the loader kinematics plugin. If
-   * the transform does not exist in the kinematics model, then TF will be used for lookup. The
-   * return value is true if all transformation are calculated without an error  
-   * \param[in] reference_joint_state input reference joint state
-   * \param[out] success true if no calls to the kinematics interface fail
-   */
-  bool get_reference_state_transforms(
+  bool get_all_transforms(
+    const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
     const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state);
 
   /**
@@ -145,24 +128,6 @@ public:
    */
   void apply_parameters_update();
 
-  /**
-   * Calculate 'desired joint states' based on the 'measured force', 'reference goal pose', and
-   * 'current_joint_state'.
-   *
-   * \param[in] current_joint_state current joint state of the robot
-   * \param[in] measured_wrench most recent measured wrench from force torque sensor
-   * \param[in] reference_pose input reference pose
-   * \param[in] period time in seconds since last controller update
-   * \param[out] desired_joint_state joint state reference after the admittance offset is applied to
-   * the input reference
-   */
-  controller_interface::return_type update(
-    const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
-    const geometry_msgs::msg::Wrench & measured_wrench,
-    const geometry_msgs::msg::PoseStamped & reference_pose,
-    const rclcpp::Duration & period,
-    trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_states);
-  
   /**
    * Calculate 'desired joint states' based on the 'measured force', 'reference joint state', and
    * 'current_joint_state'.
@@ -192,10 +157,20 @@ public:
   /**
    * Explanation - uses kinematics
    *
-   * \param[in] state_message message
-   * \param[out] state_message message
+   * \param[in] current_joint_state message
    */
   geometry_msgs::msg::Pose initialize_goal_pose(const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state);
+  
+  /**
+   * @brief Convert cartesian goal pose to joint-space goal.
+   * \param[in] input PoseStamped goal expressed as ft_sensor link pose in base_link frame
+   * \param[in] current_state current joint state
+   * \param[out] output = current_state + delta_theta required to reach the goal pose
+   */
+  void cartesian_goal_to_joint_space(
+    const geometry_msgs::msg::PoseStamped & input,
+    trajectory_msgs::msg::JointTrajectoryPoint & current_state,
+    trajectory_msgs::msg::JointTrajectoryPoint & output);
 
 public:
   // admittance config parameters

@@ -132,6 +132,58 @@ geometry_msgs::msg::Pose AdmittanceRule::initialize_goal_pose(
   return tf2::toMsg(admittance_transforms_.ref_base_ft_);
 }
 
+void AdmittanceRule::cartesian_goal_to_joint_space(
+    const geometry_msgs::msg::PoseStamped & input,
+    trajectory_msgs::msg::JointTrajectoryPoint & current_state,
+    trajectory_msgs::msg::JointTrajectoryPoint & output)
+{
+  // calculate difference between `tool0` current and goal pose, 
+  // both expressed in `base_link` frame.
+  Eigen::Isometry3d goal_base_ft;
+  tf2::fromMsg(input.pose, goal_base_ft);
+
+  Eigen::Matrix<double, 6, 1> delta_X;
+  delta_X.block<3, 1>(0, 0) =
+    goal_base_ft.translation() - admittance_transforms_.base_ft_.translation();
+
+  const auto R_current = admittance_transforms_.base_ft_.rotation();
+  const auto R_desired = goal_base_ft.rotation();
+  const auto R = R_desired * R_current.transpose();
+  const auto angle_axis = Eigen::AngleAxisd(R);
+  delta_X.block<3, 1>(3, 0) = angle_axis.angle() * angle_axis.axis();
+
+
+  std::cout<<input.header.frame_id<<" delta_X translation:"<<std::endl;
+  std::cout<<delta_X(0,0)<<std::endl;
+  std::cout<<delta_X(1,0)<<std::endl;
+  std::cout<<delta_X(2,0)<<std::endl;
+
+  std::cout<<input.header.frame_id<<" delta_X rotation:"<<std::endl;
+  std::cout<<delta_X(3,0)<<std::endl;
+  std::cout<<delta_X(4,0)<<std::endl;
+  std::cout<<delta_X(5,0)<<std::endl;
+  std::cout<<"-------------"<<std::endl;
+
+  Eigen::VectorXd delta_joints = Eigen::VectorXd::Zero(6);
+  bool success = kinematics_->convert_cartesian_deltas_to_joint_deltas(
+    admittance_state_.current_joint_pos, delta_X, parameters_.control.frame.id, delta_joints);
+  
+  /**/
+  if(success){
+    std::cout<<"VectorXd: "<<std::endl;
+    for(size_t i = 0; i < 6; i++)
+    {
+      std::cout<<delta_joints(i)<<std::endl;
+    }
+  }else{
+    std::cout<<"couldn't convert."<<std::endl;
+  }
+  
+
+  for(size_t i = 0; i < output.positions.size(); i++)
+    output.positions[i] = current_state.positions[i] + delta_joints(i);
+}
+
 void AdmittanceRule::apply_parameters_update()
 {
   if (parameter_handler_->is_old(parameters_))
@@ -154,11 +206,17 @@ void AdmittanceRule::apply_parameters_update()
 }
 
 
-bool AdmittanceRule::get_current_state_transforms(
-  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state)
+bool AdmittanceRule::get_all_transforms(
+  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
+  const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state)
 {
-  // get transforms at current configuration
+  // get reference transforms
   bool success = kinematics_->calculate_link_transform(
+    reference_joint_state.positions, parameters_.ft_sensor.frame.id,
+    admittance_transforms_.ref_base_ft_);
+
+  // get transforms at current configuration
+  success &= kinematics_->calculate_link_transform(
     current_joint_state.positions, parameters_.ft_sensor.frame.id, admittance_transforms_.base_ft_);
   success &= kinematics_->calculate_link_transform(
     current_joint_state.positions, parameters_.kinematics.tip, admittance_transforms_.base_tip_);
@@ -172,20 +230,6 @@ bool AdmittanceRule::get_current_state_transforms(
     current_joint_state.positions, parameters_.control.frame.id,
     admittance_transforms_.base_control_);
 
-  return success;
-}
-bool AdmittanceRule::get_reference_state_transforms(
-  const geometry_msgs::msg::PoseStamped & reference_pose)
-{
-  tf2::fromMsg(reference_pose.pose, admittance_transforms_.ref_base_ft_);
-  return true;
-}
-bool AdmittanceRule::get_reference_state_transforms(
-  const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state)
-{
-  bool success = kinematics_->calculate_link_transform(
-    reference_joint_state.positions, parameters_.ft_sensor.frame.id,
-    admittance_transforms_.ref_base_ft_);
   return success;
 }
 
@@ -202,8 +246,7 @@ controller_interface::return_type AdmittanceRule::update(
   {
     apply_parameters_update();
   }
-  bool success = get_current_state_transforms(current_joint_state);
-  success &= get_reference_state_transforms(reference_joint_state);
+  bool success = get_all_transforms(current_joint_state, reference_joint_state);
   get_admittance_state_from_transforms(current_joint_state, measured_wrench);
   success &= calculate_admittance_rule(admittance_state_, dt);
 
@@ -225,42 +268,6 @@ controller_interface::return_type AdmittanceRule::update(
     desired_joint_state.accelerations[i] =
       reference_joint_state.accelerations[i] + admittance_state_.joint_acc[i];
   }
-  return controller_interface::return_type::OK;
-}
-
-controller_interface::return_type AdmittanceRule::update(
-  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
-  const geometry_msgs::msg::Wrench & measured_wrench,
-  const geometry_msgs::msg::PoseStamped & reference_pose,
-  const rclcpp::Duration & period, trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_state)
-{
-  const double dt = period.seconds();
-
-  if (parameters_.enable_parameter_update_without_reactivation)
-  {
-    apply_parameters_update();
-  }
-  bool success = get_current_state_transforms(current_joint_state);
-  success &= get_reference_state_transforms(reference_pose);
-  get_admittance_state_from_transforms(current_joint_state, measured_wrench);
-  success &= calculate_admittance_rule(admittance_state_, dt);
-
-  // if a failure occurred during any kinematics interface calls, return an error and
-  // remain at current state
-  if (!success)
-  {
-    desired_joint_state = current_joint_state;
-    return controller_interface::return_type::ERROR;
-  }
-
-  // update joint desired joint state
-  for (size_t i = 0; i < num_joints_; ++i)
-  {
-    desired_joint_state.positions[i] = admittance_state_.joint_pos[i];
-    desired_joint_state.velocities[i] = admittance_state_.joint_vel[i];
-    desired_joint_state.accelerations[i] = admittance_state_.joint_acc[i];
-  }
-
   return controller_interface::return_type::OK;
 }
 

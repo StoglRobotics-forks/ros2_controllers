@@ -360,10 +360,12 @@ controller_interface::CallbackReturn AdmittanceController::on_activate(
     RCLCPP_ERROR(get_node()->get_logger(), "Failed to initialize goal_pose from current joint positions.\n");
     return controller_interface::CallbackReturn::ERROR;
   }
+  last_goal_pose_.pose = goal_pose_msg_->pose;
 
   // Use current joint_state as a default reference
   last_reference_ = joint_state_;
   last_commanded_ = joint_state_;
+  joint_space_goal_ = joint_state_;
   reference_ = joint_state_;
   reference_admittance_ = joint_state_;
 
@@ -394,11 +396,25 @@ controller_interface::return_type AdmittanceController::update_reference_from_su
     }
   }
 
-  // after initializing goal_pose_msg_, update it from subscribers only
-  // if another message exists
+  // if another message exists...
   if(*input_goal_pose_.readFromRT())
   {
     goal_pose_msg_ = *input_goal_pose_.readFromRT();
+    // ... and its a different goal...
+    if(is_same_pose(last_goal_pose_.pose, goal_pose_msg_->pose) == false)
+    {
+      // ... convert goal to joint-space and apply it.
+      admittance_->cartesian_goal_to_joint_space(*goal_pose_msg_, joint_state_, joint_space_goal_);
+      for (size_t i = 0; i < joint_space_goal_.positions.size(); ++i)
+      {
+        position_reference_[i].get() = joint_space_goal_.positions[i];
+      }
+      for (size_t i = 0; i < joint_space_goal_.velocities.size(); ++i)
+      {
+        velocity_reference_[i].get() = joint_space_goal_.velocities[i];
+      }
+    }
+    last_goal_pose_.pose = goal_pose_msg_->pose;
   }
 
 
@@ -427,18 +443,7 @@ controller_interface::return_type AdmittanceController::update_and_write_command
   read_state_from_hardware(joint_state_, ft_values_);
 
   // apply admittance control to reference to determine desired state
-
-  /* some flag that determines whether we call the update() with goal_pose or with joint reference.
-    How can we know here whether the reference was updated from subscribers or from itnerfaces?
-  
-  if(updated_from_subscribers)
-    admittance_->update(joint_state_, ft_values_, *goal_pose_msg_, period, reference_admittance_);
-  else
-    admittance_->update(joint_state_, ft_values_, reference_, period, reference_admittance_);
-    
-  */
-
-  admittance_->update(joint_state_, ft_values_, *goal_pose_msg_, period, reference_admittance_);
+  admittance_->update(joint_state_, ft_values_, reference_, period, reference_admittance_);
 
   // write calculated values to joint interfaces
   write_state_to_hardware(reference_admittance_);
@@ -608,6 +613,25 @@ void AdmittanceController::read_state_reference_interfaces(
 
   last_reference_.positions = state_reference.positions;
   last_reference_.velocities = state_reference.velocities;
+}
+
+bool AdmittanceController::is_same_pose(const geometry_msgs::msg::Pose & a,
+                                        const geometry_msgs::msg::Pose & b,
+                                        double eps)
+{
+  // compare position
+  bool pos = std::abs(a.position.x - b.position.x) <= eps &&
+             std::abs(a.position.y - b.position.y) <= eps &&
+             std::abs(a.position.z - b.position.z) <= eps;
+  if (!pos) return false;
+
+  // compare quaternion
+  bool rot = std::abs(a.orientation.w - b.orientation.w) <= eps &&
+             std::abs(a.orientation.x - b.orientation.x) <= eps &&
+             std::abs(a.orientation.y - b.orientation.y) <= eps &&
+             std::abs(a.orientation.z - b.orientation.z) <= eps;
+
+  return rot;
 }
 
 }  // namespace admittance_controller
