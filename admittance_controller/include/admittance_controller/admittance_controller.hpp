@@ -133,6 +133,8 @@ protected:
   // ROS subscribers
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectoryPoint>::SharedPtr
     input_joint_command_subscriber_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr
+    input_goal_pose_subscriber_;
   rclcpp::Publisher<control_msgs::msg::AdmittanceControllerState>::SharedPtr s_publisher_;
 
   // admittance parameters
@@ -140,10 +142,13 @@ protected:
 
   // ROS messages
   std::shared_ptr<trajectory_msgs::msg::JointTrajectoryPoint> joint_command_msg_;
+  std::shared_ptr<geometry_msgs::msg::PoseStamped> goal_pose_msg_;
 
   // real-time buffer
   realtime_tools::RealtimeBuffer<std::shared_ptr<trajectory_msgs::msg::JointTrajectoryPoint>>
     input_joint_command_;
+  realtime_tools::RealtimeBuffer<std::shared_ptr<geometry_msgs::msg::PoseStamped>>
+    input_goal_pose_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ControllerStateMsg>> state_publisher_;
 
   trajectory_msgs::msg::JointTrajectoryPoint last_commanded_;

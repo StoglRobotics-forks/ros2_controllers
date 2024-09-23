@@ -265,6 +265,14 @@ controller_interface::CallbackReturn AdmittanceController::on_configure(
   input_joint_command_subscriber_ =
     get_node()->create_subscription<trajectory_msgs::msg::JointTrajectoryPoint>(
       "~/joint_references", rclcpp::SystemDefaultsQoS(), joint_command_callback);
+
+  auto goal_pose_callback =
+    [this](const std::shared_ptr<geometry_msgs::msg::PoseStamped> msg)
+  { input_goal_pose_.writeFromNonRT(msg); };
+  input_goal_pose_subscriber_ =
+    get_node()->create_subscription<geometry_msgs::msg::PoseStamped>(
+      "~/goal_pose", rclcpp::SystemDefaultsQoS(), goal_pose_callback);
+
   s_publisher_ = get_node()->create_publisher<control_msgs::msg::AdmittanceControllerState>(
     "~/status", rclcpp::SystemDefaultsQoS());
   state_publisher_ =
@@ -280,7 +288,9 @@ controller_interface::CallbackReturn AdmittanceController::on_configure(
     semantic_components::ForceTorqueSensor(admittance_->parameters_.ft_sensor.name));
 
   // configure admittance rule
-  if (admittance_->configure(get_node(), num_joints_) == controller_interface::return_type::ERROR)
+  if (
+    admittance_->configure(get_node(), num_joints_, this->get_robot_description()) ==
+    controller_interface::return_type::ERROR)
   {
     return controller_interface::CallbackReturn::ERROR;
   }
@@ -344,6 +354,12 @@ controller_interface::CallbackReturn AdmittanceController::on_activate(
       return controller_interface::CallbackReturn::ERROR;
     }
   }
+  goal_pose_msg_ = std::make_shared<geometry_msgs::msg::PoseStamped>();
+  goal_pose_msg_->pose = admittance_->initialize_goal_pose(joint_state_);
+  if(!goal_pose_msg_){
+    RCLCPP_ERROR(get_node()->get_logger(), "Failed to initialize goal_pose from current joint positions.\n");
+    return controller_interface::CallbackReturn::ERROR;
+  }
 
   // Use current joint_state as a default reference
   last_reference_ = joint_state_;
@@ -378,6 +394,14 @@ controller_interface::return_type AdmittanceController::update_reference_from_su
     }
   }
 
+  // after initializing goal_pose_msg_, update it from subscribers only
+  // if another message exists
+  if(*input_goal_pose_.readFromRT())
+  {
+    goal_pose_msg_ = *input_goal_pose_.readFromRT();
+  }
+
+
   return controller_interface::return_type::OK;
 }
 
@@ -390,6 +414,12 @@ controller_interface::return_type AdmittanceController::update_and_write_command
     return controller_interface::return_type::ERROR;
   }
 
+  if (period.seconds() > 5.0) {
+    RCLCPP_WARN(
+        get_node()->get_logger(), "Large dt, skipping!");
+    return controller_interface::return_type::OK;
+  }
+
   // update input reference from chainable interfaces
   read_state_reference_interfaces(reference_);
 
@@ -397,7 +427,18 @@ controller_interface::return_type AdmittanceController::update_and_write_command
   read_state_from_hardware(joint_state_, ft_values_);
 
   // apply admittance control to reference to determine desired state
-  admittance_->update(joint_state_, ft_values_, reference_, period, reference_admittance_);
+
+  /* some flag that determines whether we call the update() with goal_pose or with joint reference.
+    How can we know here whether the reference was updated from subscribers or from itnerfaces?
+  
+  if(updated_from_subscribers)
+    admittance_->update(joint_state_, ft_values_, *goal_pose_msg_, period, reference_admittance_);
+  else
+    admittance_->update(joint_state_, ft_values_, reference_, period, reference_admittance_);
+    
+  */
+
+  admittance_->update(joint_state_, ft_values_, *goal_pose_msg_, period, reference_admittance_);
 
   // write calculated values to joint interfaces
   write_state_to_hardware(reference_admittance_);

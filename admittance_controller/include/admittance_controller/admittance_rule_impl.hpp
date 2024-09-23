@@ -20,6 +20,7 @@
 #include "admittance_controller/admittance_rule.hpp"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <control_toolbox/filters.hpp>
@@ -34,7 +35,8 @@ constexpr auto NUM_CARTESIAN_DOF = 6;  // (3 translation + 3 rotation)
 
 /// Configure admittance rule memory for num joints and load kinematics interface
 controller_interface::return_type AdmittanceRule::configure(
-  const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> & node, const size_t num_joints)
+  const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> & node, const size_t num_joints,
+  const std::string & robot_description)
 {
   num_joints_ = num_joints;
 
@@ -58,7 +60,9 @@ controller_interface::return_type AdmittanceRule::configure(
         kinematics_loader_->createUnmanagedInstance(parameters_.kinematics.plugin_name));
 
       if (!kinematics_->initialize(
-            node->get_node_parameters_interface(), parameters_.kinematics.tip))
+            robot_description,
+            node->get_node_parameters_interface(),
+            "kinematics"))
       {
         return controller_interface::return_type::ERROR;
       }
@@ -119,6 +123,15 @@ controller_interface::return_type AdmittanceRule::reset(const size_t num_joints)
   return controller_interface::return_type::OK;
 }
 
+geometry_msgs::msg::Pose AdmittanceRule::initialize_goal_pose(
+  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state)
+{
+  kinematics_->calculate_link_transform(
+    current_joint_state.positions, parameters_.ft_sensor.frame.id,
+    admittance_transforms_.ref_base_ft_);
+  return tf2::toMsg(admittance_transforms_.ref_base_ft_);
+}
+
 void AdmittanceRule::apply_parameters_update()
 {
   if (parameter_handler_->is_old(parameters_))
@@ -140,17 +153,12 @@ void AdmittanceRule::apply_parameters_update()
   }
 }
 
-bool AdmittanceRule::get_all_transforms(
-  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
-  const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state)
-{
-  // get reference transforms
-  bool success = kinematics_->calculate_link_transform(
-    reference_joint_state.positions, parameters_.ft_sensor.frame.id,
-    admittance_transforms_.ref_base_ft_);
 
+bool AdmittanceRule::get_current_state_transforms(
+  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state)
+{
   // get transforms at current configuration
-  success &= kinematics_->calculate_link_transform(
+  bool success = kinematics_->calculate_link_transform(
     current_joint_state.positions, parameters_.ft_sensor.frame.id, admittance_transforms_.base_ft_);
   success &= kinematics_->calculate_link_transform(
     current_joint_state.positions, parameters_.kinematics.tip, admittance_transforms_.base_tip_);
@@ -164,6 +172,20 @@ bool AdmittanceRule::get_all_transforms(
     current_joint_state.positions, parameters_.control.frame.id,
     admittance_transforms_.base_control_);
 
+  return success;
+}
+bool AdmittanceRule::get_reference_state_transforms(
+  const geometry_msgs::msg::PoseStamped & reference_pose)
+{
+  tf2::fromMsg(reference_pose.pose, admittance_transforms_.ref_base_ft_);
+  return true;
+}
+bool AdmittanceRule::get_reference_state_transforms(
+  const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state)
+{
+  bool success = kinematics_->calculate_link_transform(
+    reference_joint_state.positions, parameters_.ft_sensor.frame.id,
+    admittance_transforms_.ref_base_ft_);
   return success;
 }
 
@@ -180,27 +202,9 @@ controller_interface::return_type AdmittanceRule::update(
   {
     apply_parameters_update();
   }
-
-  bool success = get_all_transforms(current_joint_state, reference_joint_state);
-
-  // apply filter and update wrench_world_ vector
-  Eigen::Matrix<double, 3, 3> rot_world_sensor =
-    admittance_transforms_.world_base_.rotation() * admittance_transforms_.base_ft_.rotation();
-  Eigen::Matrix<double, 3, 3> rot_world_cog =
-    admittance_transforms_.world_base_.rotation() * admittance_transforms_.base_cog_.rotation();
-  process_wrench_measurements(measured_wrench, rot_world_sensor, rot_world_cog);
-
-  // transform wrench_world_ into base frame
-  admittance_state_.wrench_base.block<3, 1>(0, 0) =
-    admittance_transforms_.world_base_.rotation().transpose() * wrench_world_.block<3, 1>(0, 0);
-  admittance_state_.wrench_base.block<3, 1>(3, 0) =
-    admittance_transforms_.world_base_.rotation().transpose() * wrench_world_.block<3, 1>(3, 0);
-
-  // Compute admittance control law
-  vec_to_eigen(current_joint_state.positions, admittance_state_.current_joint_pos);
-  admittance_state_.rot_base_control = admittance_transforms_.base_control_.rotation();
-  admittance_state_.ref_trans_base_ft = admittance_transforms_.ref_base_ft_;
-  admittance_state_.ft_sensor_frame = parameters_.ft_sensor.frame.id;
+  bool success = get_current_state_transforms(current_joint_state);
+  success &= get_reference_state_transforms(reference_joint_state);
+  get_admittance_state_from_transforms(current_joint_state, measured_wrench);
   success &= calculate_admittance_rule(admittance_state_, dt);
 
   // if a failure occurred during any kinematics interface calls, return an error and don't
@@ -221,8 +225,67 @@ controller_interface::return_type AdmittanceRule::update(
     desired_joint_state.accelerations[i] =
       reference_joint_state.accelerations[i] + admittance_state_.joint_acc[i];
   }
+  return controller_interface::return_type::OK;
+}
+
+controller_interface::return_type AdmittanceRule::update(
+  const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
+  const geometry_msgs::msg::Wrench & measured_wrench,
+  const geometry_msgs::msg::PoseStamped & reference_pose,
+  const rclcpp::Duration & period, trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_state)
+{
+  const double dt = period.seconds();
+
+  if (parameters_.enable_parameter_update_without_reactivation)
+  {
+    apply_parameters_update();
+  }
+  bool success = get_current_state_transforms(current_joint_state);
+  success &= get_reference_state_transforms(reference_pose);
+  get_admittance_state_from_transforms(current_joint_state, measured_wrench);
+  success &= calculate_admittance_rule(admittance_state_, dt);
+
+  // if a failure occurred during any kinematics interface calls, return an error and
+  // remain at current state
+  if (!success)
+  {
+    desired_joint_state = current_joint_state;
+    return controller_interface::return_type::ERROR;
+  }
+
+  // update joint desired joint state
+  for (size_t i = 0; i < num_joints_; ++i)
+  {
+    desired_joint_state.positions[i] = admittance_state_.joint_pos[i];
+    desired_joint_state.velocities[i] = admittance_state_.joint_vel[i];
+    desired_joint_state.accelerations[i] = admittance_state_.joint_acc[i];
+  }
 
   return controller_interface::return_type::OK;
+}
+
+void AdmittanceRule::get_admittance_state_from_transforms(
+    const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
+    const geometry_msgs::msg::Wrench & measured_wrench)
+{
+  // apply filter and update wrench_world_ vector
+  Eigen::Matrix<double, 3, 3> rot_world_sensor =
+    admittance_transforms_.world_base_.rotation() * admittance_transforms_.base_ft_.rotation();
+  Eigen::Matrix<double, 3, 3> rot_world_cog =
+    admittance_transforms_.world_base_.rotation() * admittance_transforms_.base_cog_.rotation();
+  process_wrench_measurements(measured_wrench, rot_world_sensor, rot_world_cog);
+
+  // transform wrench_world_ into base frame
+  admittance_state_.wrench_base.block<3, 1>(0, 0) =
+    admittance_transforms_.world_base_.rotation().transpose() * wrench_world_.block<3, 1>(0, 0);
+  admittance_state_.wrench_base.block<3, 1>(3, 0) =
+    admittance_transforms_.world_base_.rotation().transpose() * wrench_world_.block<3, 1>(3, 0);
+
+  // Compute admittance control law
+  vec_to_eigen(current_joint_state.positions, admittance_state_.current_joint_pos);
+  admittance_state_.rot_base_control = admittance_transforms_.base_control_.rotation();
+  admittance_state_.ref_trans_base_ft = admittance_transforms_.ref_base_ft_;
+  admittance_state_.ft_sensor_frame = parameters_.ft_sensor.frame.id;
 }
 
 bool AdmittanceRule::calculate_admittance_rule(AdmittanceState & admittance_state, double dt)
