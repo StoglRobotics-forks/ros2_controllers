@@ -64,17 +64,20 @@ enum class service_mode_type : std::uint8_t
   CLOSE = 2,
 };
 
+// TODO : rearrange it later
 enum class gripper_state_type : std::uint8_t
 {
   UNDEFINED = 0,
   STORE_ORIGINAL_STATE = 1,
   SET_BEFORE_COMMAND = 2,
-  OPEN_CLOSE_GRIPPER = 3,
+  CLOSE_GRIPPER = 3,
   CHECK_GRIPPER_STATE = 4,
   RESTORE_ORIGINAL_STATE = 5,
   CHECK_RESTORE_STATE = 6,
   OPEN_GRIPPER = 7,
-  CLOSE_GRIPPER = 8,
+  START_CLOSE_GRIPPER = 8,
+  SET_AFTER_COMMAND = 9,
+  HALTED = 10,
 };
 
 enum class reconfigure_state_type : std::uint8_t
@@ -118,14 +121,14 @@ public:
   controller_interface::return_type update(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
-  std::vector<std::string> command_ios_open, command_ios_close, set_before_command_open, reconfigure_command;
-  std::vector<double> command_ios_open_values, command_ios_close_values, set_before_command_open_values, set_before_command_close_values_original, reconfigure_command_values;
-  std::vector<std::string> state_ios_open, state_ios_close, set_before_command_close;
-  std::vector<double> state_ios_open_values, state_ios_close_values, set_before_command_close_values, set_before_command_open_values_original_;
+  std::vector<std::string> command_ios_open, command_ios_close, set_before_command_open, set_after_command_open, reconfigure_command;
+  std::vector<double> command_ios_open_values, command_ios_close_values, set_before_command_open_values, set_after_command_open_values, reconfigure_command_values;
+  std::vector<std::string> state_ios_open, state_ios_close, set_before_command_close, set_after_command_close;
+  std::vector<double> state_ios_open_values, state_ios_close_values, set_before_command_close_values, set_after_command_close_values, set_after_command_open_values_original_;
   std::string status_joint_name;
   bool is_open;
-  std::unordered_map<std::string, double> command_if_ios_before_opening;
-  std::unordered_map<std::string, double> original_ios_before_opening;
+  std::unordered_map<std::string, double> command_if_ios_after_opening;
+  std::unordered_map<std::string, double> original_ios_after_opening;
   std::unordered_map<std::string, double> command_if_ios_before_closing;
   std::unordered_map<std::string, double> original_ios_before_closing;
 
@@ -138,7 +141,6 @@ public:
   bool setResult;
 
 
-  // TODO(anyone): replace the state and command message types
   using ControllerModeSrvType = std_srvs::srv::SetBool;
   using OpenSrvType = std_srvs::srv::Trigger;
   using ConfigSrvType = control_msgs::srv::SetConfig;
@@ -162,7 +164,6 @@ protected:
 
   rclcpp_action::Server<GripperAction>::SharedPtr gripper_action_server_;
   rclcpp_action::Server<GripperConfigAction>::SharedPtr gripper_config_action_server_;
-  
 
   realtime_tools::RealtimeBuffer<control_mode_type> control_mode_;
   realtime_tools::RealtimeBuffer<service_mode_type> service_buffer_;
@@ -196,25 +197,25 @@ protected:
   bool reconfigureFlag_, openFlag_, closeFlag_;
 
 private:
-  bool findAndSetCommand(const std::string & name, const double value);
-  bool findAndGetState(const std::string & name, double& value);
-  bool findAndGetCommand(const std::string & name, double& value);
-  void initMsgs();
-  void handleGripperStateTransitionOpen(const gripper_state_type & state);
-  void handleGripperStateTransitionClose(const gripper_state_type & state);
-  void handleReconfigurestateTransition(const reconfigure_state_type & state);
+  bool find_and_set_command(const std::string & name, const double value);
+  bool find_and_get_state(const std::string & name, double& value);
+  bool find_and_get_command(const std::string & name, double& value);
+  void init_msgs();
+  void handle_gripper_state_transition_open(const gripper_state_type & state);
+  void handle_gripper_state_transition_close(const gripper_state_type & state);
+  void handle_reconfigure_state_transition(const reconfigure_state_type & state);
   /// \brief Function to check the parameters
-  controller_interface::CallbackReturn checkParameters();
+  controller_interface::CallbackReturn check_parameters();
   /// Preparing the command ios and states ios vars for the command/state interface configuraiton 
-  void prepareCommandAndStateIos();
-  controller_interface::CallbackReturn preparePublishersAndServices();
-  void publishGripperJointStates();
-  void publishDynamicInterfaceValues();
-  void publishReconfigureGripperJointStates();
+  void prepare_command_and_state_ios();
+  controller_interface::CallbackReturn prepare_publishers_and_services();
+  void publish_gripper_joint_states();
+  void publish_dynamic_interface_values();
+  void publish_reconfigure_gripper_joint_states();
   
-  std::vector<std::string> configurationsList_;
-  std::vector<gripper_io_controller::Params::ConfigurationSetup::MapConfigurations> configMap_;
-  std::vector<gripper_io_controller::Params::SensorsInterfaces::MapGripperSpecificSensors> sensorsMap_;
+  std::vector<std::string> configurations_list_;
+  std::vector<gripper_io_controller::Params::ConfigurationSetup::MapConfigurations> config_map_;
+  std::vector<gripper_io_controller::Params::SensorsInterfaces::MapGripperSpecificSensors> sensors_map_;
   double state_value_;
   std::string configuration_key_;
   bool check_state_ios_;

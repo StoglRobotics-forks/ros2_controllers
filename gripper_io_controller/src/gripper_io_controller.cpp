@@ -73,10 +73,9 @@ controller_interface::CallbackReturn GripperIOController::on_init()
 controller_interface::CallbackReturn GripperIOController::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-
   params_ = param_listener_->get_params();
 
-  auto result = checkParameters();
+  auto result = check_parameters();
   if (result != controller_interface::CallbackReturn::SUCCESS)
   {
     return result;
@@ -86,37 +85,13 @@ controller_interface::CallbackReturn GripperIOController::on_configure(
    * realtime publisher for the gripper_specific sensors, type publishing is boolean
   */
 
-  prepareCommandAndStateIos();
+  prepare_command_and_state_ios();
 
-  result = preparePublishersAndServices();
+  result = prepare_publishers_and_services();
   if (result != controller_interface::CallbackReturn::SUCCESS)
   {
     return result;
   }
-
-  
-
-  // TODO(anyone): Reserve memory in state publisher depending on the message type
-  // gripper_joint_state_publisher_->lock();
-  // gripper_joint_state_publisher_->msg_.header.frame_id = status_joint_name;
-  // gripper_joint_state_publisher_->msg_.name = {status_joint_name.c_str()};
-  // gripper_joint_state_publisher_->unlock();
-
-  // event_publisher_->lock();
-  // event_publisher_->msg_.header.frame_id = status_joint_name;
-  // event_publisher_->msg_.name = command_ios;
-  // event_publisher_->unlock();
-
-  RCLCPP_INFO(get_node()->get_logger(), "=============== Here are all command interfaces:");
-  for (const auto& str : command_if_ios) {
-    RCLCPP_INFO(get_node()->get_logger(), "    %s", str.c_str());
-  }
-  RCLCPP_INFO(get_node()->get_logger(), "=============== Here are all state interfaces:");
-  for (const auto& str : state_if_ios) {
-    RCLCPP_INFO(get_node()->get_logger(), "    %s", str.c_str());
-  }
-  RCLCPP_INFO(get_node()->get_logger(), "configure successful");
-  // RCLCPP_INFO(get_node()->get_logger(), "Size of configMap_: %zu", configMap_.size());
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
@@ -131,12 +106,6 @@ controller_interface::InterfaceConfiguration GripperIOController::command_interf
     command_interfaces_config.names.push_back(command_io);
   }
 
-  // this info is not needed to be logged removed later TODO (Sachin) :
-  // for (const auto & name : command_interfaces_config.names)
-  // {
-  //   RCLCPP_INFO(get_node()->get_logger(), "command interface: %s", name.c_str());
-  // }
-
   return command_interfaces_config;
 }
 
@@ -150,13 +119,7 @@ controller_interface::InterfaceConfiguration GripperIOController::state_interfac
   {
     state_interfaces_config.names.push_back(state_io);
   }
-
-  // this info is not needed to be logged removed later TODO (Sachin) :
-  // for (const auto & name : state_interfaces_config.names)
-  // {
-  //   RCLCPP_INFO(get_node()->get_logger(), "state interface: %s", name.c_str());
-  // }
-
+  
   return state_interfaces_config;
 }
 
@@ -169,13 +132,6 @@ controller_interface::CallbackReturn GripperIOController::on_activate(
 controller_interface::CallbackReturn GripperIOController::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // TODO(anyone): depending on number of interfaces, use definitions, e.g., `CMD_MY_ITFS`,
-  // instead of a loop
-  // TODO (Sachin) : Do we really to be to do this? ask Dr. Denis
-  // for (size_t i = 0; i < command_interfaces_.size(); ++i)
-  // {
-  //   command_interfaces_[i].set_value(std::numeric_limits<double>::quiet_NaN());
-  // }
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
@@ -185,7 +141,7 @@ controller_interface::return_type GripperIOController::update(
   /// open and close
   /// use state machine with flags to open and close the gripper
 
-  /// state for teh configuration
+  /// state for the configuration
   /// stop the open/close when 
   /// store where gripper, enum class, open, close, undefined
   /// state, changing configuration, store in realtime buffer and check it in the callback.
@@ -193,145 +149,42 @@ controller_interface::return_type GripperIOController::update(
 
   /// set the unit test later
 
-  /// 
-  // RCLCPP_INFO(get_node()->get_logger(), "Current command interfaces:");
-  // for (const auto & command_interface : command_interfaces_)
-  // {
-  //   RCLCPP_INFO(get_node()->get_logger(), "  %s: %f", command_interface.get_name().c_str(), command_interface.get_value());
-  // }
-
-
   /// reconfigure flag will be enabled when the service is called with the name of the configuration
   if (reconfigureFlag_)
   {
     configuration_key_ = *(configure_gripper_buffer_.readFromRT());
     RCLCPP_INFO(get_node()->get_logger(), "Reconfiguring to configuration: %s", configuration_key_.c_str());
 
-    handleReconfigurestateTransition(*(reconfigure_state_buffer_.readFromRT()));
-
-    // find index of the configuration
-    // int index = -1;
-    // for (size_t i = 0; i < configurationsList_.size(); ++i)
-    // {
-    //   // std::find
-    //   if (configurationsList_[i] == configuration_key_)
-    //   {
-    //     index = static_cast<int>(i);
-    //     break;
-    //   }
-    // }
-    // if (index == -1)
-    // {
-    //   RCLCPP_ERROR(get_node()->get_logger(), "Configuration not found");
-    // }
-    // else 
-    // {
-    //   auto conf_it = configMap_[index];
-
-    
-    
-    // publish the configuration joint states
-    // if (configuration_key_ == "")
-    // {
-    //   // RCLCPP_ERROR(get_node()->get_logger(), "Configuration key is empty");
-    // }
-    // else 
-    // {
-    
-    // reconfigureFlag_ = false;
-    // }
-    
-
-  // }
+    handle_reconfigure_state_transition(*(reconfigure_state_buffer_.readFromRT()));
   }
 
   // get the current command
   auto current_command = service_buffer_.readFromRT();
-  // RCLCPP_INFO(get_node()->get_logger(), "Current command: %d", *current_command);
   switch (*(service_buffer_.readFromRT()))
   {
   case service_mode_type::UNDEFINED:
     // do nothing
     break;
   case service_mode_type::OPEN:
-    handleGripperStateTransitionOpen(*(gripper_state_buffer_.readFromRT()));
+    handle_gripper_state_transition_open(*(gripper_state_buffer_.readFromRT()));
     break;
   case service_mode_type::CLOSE:
-    handleGripperStateTransitionClose(*(gripper_state_buffer_.readFromRT()));
+    handle_gripper_state_transition_close(*(gripper_state_buffer_.readFromRT()));
     break;
   
   default:
     break;
   }
   
-    
-    // *(current_command) = service_mode_type::UNDEFINED;
-
-    // TODO (Sachin) : I think we don't require this, as I will define another publisher with state/command msg as discussed with Dr. Denis
-    // if (event_publisher_ && event_publisher_->trylock())
-    // {
-    //   event_publisher_->msg_.header.stamp = time;
-    //   event_publisher_->msg_.position.clear();
-    //   for (size_t i = 0; i < command_interfaces_.size(); ++i) event_publisher_->msg_.position.push_back(command_interfaces_[i].get_value());
-    //   event_publisher_->unlockAndPublish();
-    // }
-  
-  // TODO: Sachin
-  // Get The Current status of the gripper and publish to joint states -- only if a joint state was supplied.
-
-  // have a good name for the state_publisher, this basically publishes the gripper joint state
-  
-  // if ((!params_.open_close_joints.empty()) && gripper_joint_state_publisher_ && gripper_joint_state_publisher_->trylock())
-  // {
-  //   gripper_joint_state_publisher_->msg_.header.stamp = time;
-
-  //   for (size_t i = 0; i < state_ios_open.size(); ++i)
-  //   {
-  //     setResult = findAndGetState(state_ios_open[i].c_str(), state_value_);
-  //     if (!setResult)
-  //     {
-  //       RCLCPP_ERROR(
-  //         get_node()->get_logger(), "Failed to get the state for %s", state_ios_open[i].c_str());
-  //     }
-  //     else {
-  //       if (state_value_ == state_ios_open_values[i])
-  //       {
-  //         is_open = false;
-  //         break;
-  //       }
-  //       gripper_joint_state_publisher_->msg_.position.push_back(command_interfaces_[i].get_value());
-  //     }
-  //   }
-
-  //   is_open = true;
-  //   for (size_t i = 0; i < state_interfaces_.size(); ++i)
-  //   {
-
-  //     if (state_interfaces_[i].get_value() != command_ios_values[i]){
-  //       is_open = false;
-  //       break;
-  //     }
-  //   }
-  //   if (is_open) gripper_joint_state_publisher_->msg_.position = {params_.joint_value_opened};
-  //   else gripper_joint_state_publisher_->msg_.position = {params_.joint_value_closed};
-  //   gripper_joint_state_publisher_->unlockAndPublish();
-  // }
-
-
-
-
   // this is publishing the joint states for the gripper and reconfigure
-  publishGripperJointStates();
-
-  publishDynamicInterfaceValues();
+  publish_gripper_joint_states();
+  publish_dynamic_interface_values();
 
   return controller_interface::return_type::OK;
 }
 
-bool GripperIOController::findAndSetCommand(const std::string & name, const double value)
+bool GripperIOController::find_and_set_command(const std::string & name, const double value)
 {
-  // use std::find_if 
-
   auto it = std::find_if(
     command_interfaces_.begin(), command_interfaces_.end(),
     [&](const hardware_interface::LoanedCommandInterface & command_interface)
@@ -347,7 +200,7 @@ bool GripperIOController::findAndSetCommand(const std::string & name, const doub
   return false;
 }
 
-bool GripperIOController::findAndGetState(const std::string & name, double& value)
+bool GripperIOController::find_and_get_state(const std::string & name, double& value)
 {
   auto it = std::find_if(
     state_interfaces_.begin(), state_interfaces_.end(),
@@ -365,7 +218,7 @@ bool GripperIOController::findAndGetState(const std::string & name, double& valu
   return false;
 }
 
-bool GripperIOController::findAndGetCommand(const std::string & name, double& value)
+bool GripperIOController::find_and_get_command(const std::string & name, double& value)
 {
   auto it = std::find_if(
     command_interfaces_.begin(), command_interfaces_.end(),
@@ -384,38 +237,12 @@ bool GripperIOController::findAndGetCommand(const std::string & name, double& va
 }
 
 
-void GripperIOController::handleGripperStateTransitionClose(const gripper_state_type & state)
+void GripperIOController::handle_gripper_state_transition_close(const gripper_state_type & state)
 {
       switch (state)
       {
       case gripper_state_type::UNDEFINED:
         // do nothing
-        break;
-      case gripper_state_type::CLOSE_GRIPPER:
-        RCLCPP_INFO(get_node()->get_logger(), "Closing the gripper");
-
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::STORE_ORIGINAL_STATE);
-        break;
-      case gripper_state_type::STORE_ORIGINAL_STATE:
-        RCLCPP_INFO(get_node()->get_logger(), "Storing the original state of the gripper");
-
-        // store original state of the gripper
-      set_before_command_close_values_original.resize(set_before_command_close.size());
-      for (size_t i = 0; i < set_before_command_close.size(); ++i)
-      {
-        setResult = findAndGetCommand(set_before_command_close[i], set_before_command_close_values_original[i]);
-        if (!setResult)
-        {
-          RCLCPP_ERROR(
-            get_node()->get_logger(), "Failed to get the command state for %s", set_before_command_close[i].c_str());
-        }
-        else 
-        {
-          RCLCPP_INFO(get_node()->get_logger(), "Getting the command state for %s value to %f", set_before_command_close[i].c_str(), set_before_command_close_values_original[i]);
-        }
-      }
-
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::SET_BEFORE_COMMAND);
         break;
       case gripper_state_type::SET_BEFORE_COMMAND:
         RCLCPP_INFO(get_node()->get_logger(), "Setting the state of the gripper before opening");
@@ -423,7 +250,7 @@ void GripperIOController::handleGripperStateTransitionClose(const gripper_state_
         // set before closeing
       for (size_t i = 0; i < set_before_command_close.size(); ++i)
       {
-        setResult = findAndSetCommand(set_before_command_close[i], set_before_command_close_values[i]);
+        setResult = find_and_set_command(set_before_command_close[i], set_before_command_close_values[i]);
         if (!setResult)
         {
           RCLCPP_ERROR(
@@ -436,14 +263,14 @@ void GripperIOController::handleGripperStateTransitionClose(const gripper_state_
       }
 
 
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::OPEN_CLOSE_GRIPPER);
+        gripper_state_buffer_.writeFromNonRT(gripper_state_type::CLOSE_GRIPPER);
         break;
-      case gripper_state_type::OPEN_CLOSE_GRIPPER:
+      case gripper_state_type::CLOSE_GRIPPER:
         RCLCPP_INFO(get_node()->get_logger(), "Closing the gripper");
 
         for (size_t i = 0; i < command_ios_close.size(); ++i)
       {
-        setResult = findAndSetCommand(command_ios_close[i], command_ios_close_values[i]);
+        setResult = find_and_set_command(command_ios_close[i], command_ios_close_values[i]);
         if (!setResult)
         {
           RCLCPP_ERROR(
@@ -458,13 +285,13 @@ void GripperIOController::handleGripperStateTransitionClose(const gripper_state_
         gripper_state_buffer_.writeFromNonRT(gripper_state_type::CHECK_GRIPPER_STATE);
         break;
       case gripper_state_type::CHECK_GRIPPER_STATE:
-        // RCLCPP_INFO(get_node()->get_logger(), "Checking the state of the gripper");
+        RCLCPP_INFO(get_node()->get_logger(), "Checking the state of the gripper");
         // check the state of the gripper
         check_state_ios_ = false;
 
         for (size_t i = 0; i < state_ios_close.size(); ++i)
         {
-          setResult = findAndGetState(state_ios_close[i], state_value_);
+          setResult = find_and_get_state(state_ios_close[i], state_value_);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -477,7 +304,6 @@ void GripperIOController::handleGripperStateTransitionClose(const gripper_state_
             }
             else {
               check_state_ios_ = false;
-              // RCLCPP_INFO(get_node()->get_logger(), "State value for %s is not as expected", state_ios_close[i].c_str());
               break;
             }
           }
@@ -485,32 +311,27 @@ void GripperIOController::handleGripperStateTransitionClose(const gripper_state_
         if(check_state_ios_)
         {
           RCLCPP_INFO(get_node()->get_logger(), "State values are as expected");
-          gripper_state_buffer_.writeFromNonRT(gripper_state_type::RESTORE_ORIGINAL_STATE);
+          gripper_state_buffer_.writeFromNonRT(gripper_state_type::SET_AFTER_COMMAND);
+        }
+        break;
+      case gripper_state_type::SET_AFTER_COMMAND:
+        RCLCPP_INFO(get_node()->get_logger(), "Setting the state of the gripper after closing");
+
+        // set after closeing
+        for (size_t i = 0; i < set_after_command_close.size(); ++i)
+        {
+          setResult = find_and_set_command(set_after_command_close[i], set_after_command_close_values[i]);
+          if (!setResult)
+          {
+            RCLCPP_ERROR(
+              get_node()->get_logger(), "Failed to set the command state for %s", set_after_command_close[i].c_str());
+          }
+          else 
+          {
+            RCLCPP_INFO(get_node()->get_logger(), "Setting the command state for %s value to %f", set_after_command_close[i].c_str(), set_after_command_close_values[i]);
+          }
         }
 
-        break;
-      case gripper_state_type::RESTORE_ORIGINAL_STATE:
-        RCLCPP_INFO(get_node()->get_logger(), "Restoring the original state of the gripper");
-
-        // go back to the original state
-      for (size_t i = 0; i < set_before_command_close.size(); ++i)
-      {
-        setResult = findAndSetCommand(set_before_command_close[i], set_before_command_close_values_original[i]);
-        if (!setResult)
-        {
-          RCLCPP_ERROR(
-            get_node()->get_logger(), "Failed to set the command state for %s", set_before_command_close[i].c_str());
-        }
-        else 
-        {
-          RCLCPP_INFO(get_node()->get_logger(), "Setting the command state for %s value to %f", set_before_command_close[i].c_str(), set_before_command_close_values_original[i]);
-        }
-      }
-        
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::CHECK_RESTORE_STATE);
-        break;
-      case gripper_state_type::CHECK_RESTORE_STATE:
-        RCLCPP_INFO(get_node()->get_logger(), "Checking the restored state of the gripper");
         gripper_state_buffer_.writeFromNonRT(gripper_state_type::UNDEFINED);
         RCLCPP_INFO(get_node()->get_logger(), "Gripper closed");
         closeFlag_ = false;
@@ -522,41 +343,12 @@ void GripperIOController::handleGripperStateTransitionClose(const gripper_state_
 }
 
 
-void GripperIOController::handleGripperStateTransitionOpen(const gripper_state_type & state)
+void GripperIOController::handle_gripper_state_transition_open(const gripper_state_type & state)
 {
       switch (state)
       {
       case gripper_state_type::UNDEFINED:
         // do nothing
-        break;
-      case gripper_state_type::OPEN_GRIPPER:
-        RCLCPP_INFO(get_node()->get_logger(), "Opening the gripper");
-
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::STORE_ORIGINAL_STATE);
-        break;
-
-      case gripper_state_type::STORE_ORIGINAL_STATE:
-        RCLCPP_INFO(get_node()->get_logger(), "Storing the original state of the gripper");
-
-        // store original state of the gripper
-        set_before_command_open_values_original_.resize(set_before_command_open.size());
-        for (size_t i = 0; i < set_before_command_open.size(); ++i)
-        {
-          // fake set the value
-          // setResult = findAndSetCommand(set_before_command_open[i].c_str(), 1.0);
-          setResult = findAndGetCommand(set_before_command_open[i], set_before_command_open_values_original_[i]);
-          if (!setResult)
-          {
-            RCLCPP_ERROR(
-              get_node()->get_logger(), "Failed to get the command state for %s", set_before_command_open[i].c_str());
-          }
-          else 
-          {
-            RCLCPP_INFO(get_node()->get_logger(), "Getting the command state for %s value to %f", set_before_command_open[i].c_str(), set_before_command_open_values_original_[i]);
-          }
-        }
-
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::SET_BEFORE_COMMAND);
         break;
       case gripper_state_type::SET_BEFORE_COMMAND:
         RCLCPP_INFO(get_node()->get_logger(), "Setting the state of the gripper before opening");
@@ -564,7 +356,7 @@ void GripperIOController::handleGripperStateTransitionOpen(const gripper_state_t
         // set before opening
         for (size_t i = 0; i < set_before_command_open.size(); ++i)
         {
-          setResult = findAndSetCommand(set_before_command_open[i], set_before_command_open_values[i]);
+          setResult = find_and_set_command(set_before_command_open[i], set_before_command_open_values[i]);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -575,17 +367,16 @@ void GripperIOController::handleGripperStateTransitionOpen(const gripper_state_t
             RCLCPP_INFO(get_node()->get_logger(), "Setting the command state for %s value to %f", set_before_command_open[i].c_str(), set_before_command_open_values[i]);
           }
         }
-
-
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::OPEN_CLOSE_GRIPPER);
+        
+        gripper_state_buffer_.writeFromNonRT(gripper_state_type::OPEN_GRIPPER); 
         break;
-      case gripper_state_type::OPEN_CLOSE_GRIPPER:
+      case gripper_state_type::OPEN_GRIPPER:
         RCLCPP_INFO(get_node()->get_logger(), "Opening the gripper");
 
         // now open the gripper
         for (size_t i = 0; i < command_ios_open.size(); ++i)
         {
-          setResult = findAndSetCommand(command_ios_open[i], command_ios_open_values[i]);
+          setResult = find_and_set_command(command_ios_open[i], command_ios_open_values[i]);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -595,7 +386,6 @@ void GripperIOController::handleGripperStateTransitionOpen(const gripper_state_t
           {
             RCLCPP_INFO(get_node()->get_logger(), "Setting the command state for %s value to %f", command_ios_close[i].c_str(), command_ios_close_values[i]);
           }
-          // command_interfaces_[i].set_value(command_ios_open_values[i]);
         }
         
         gripper_state_buffer_.writeFromNonRT(gripper_state_type::CHECK_GRIPPER_STATE);
@@ -607,7 +397,7 @@ void GripperIOController::handleGripperStateTransitionOpen(const gripper_state_t
 
         for (size_t i = 0; i < state_ios_open.size(); ++i)
         {
-          setResult = findAndGetState(state_ios_open[i], state_value_);
+          setResult = find_and_get_state(state_ios_open[i], state_value_);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -628,32 +418,26 @@ void GripperIOController::handleGripperStateTransitionOpen(const gripper_state_t
         if(check_state_ios_)
         {
           RCLCPP_INFO(get_node()->get_logger(), "State values are as expected");
-          gripper_state_buffer_.writeFromNonRT(gripper_state_type::RESTORE_ORIGINAL_STATE);
+          gripper_state_buffer_.writeFromNonRT(gripper_state_type::SET_AFTER_COMMAND);
         }
-        
         break;
-      case gripper_state_type::RESTORE_ORIGINAL_STATE:
-        RCLCPP_INFO(get_node()->get_logger(), "Restoring the original state of the gripper");
+      case gripper_state_type::SET_AFTER_COMMAND:
+        RCLCPP_INFO(get_node()->get_logger(), "Setting the state of the gripper after opening");
 
-        // go back to the original state
-        for (size_t i = 0; i < set_before_command_open.size(); ++i)
+        // set after opening
+        for (size_t i = 0; i < set_after_command_open.size(); ++i)
         {
-          setResult = findAndSetCommand(set_before_command_open[i], set_before_command_open_values_original_[i]);
+          setResult = find_and_set_command(set_after_command_open[i], set_after_command_open_values[i]);
           if (!setResult)
           {
             RCLCPP_ERROR(
-              get_node()->get_logger(), "Failed to set the command state for %s", set_before_command_open[i].c_str());
+              get_node()->get_logger(), "Failed to set the command state for %s", set_after_command_open[i].c_str());
           }
           else 
           {
-            RCLCPP_INFO(get_node()->get_logger(), "Setting the command state for %s value to %f", set_before_command_open[i].c_str(), set_before_command_open_values_original_[i]);
+            RCLCPP_INFO(get_node()->get_logger(), "Setting the command state for %s value to %f", set_after_command_open[i].c_str(), set_after_command_open_values[i]);
           }
         }
-        
-        gripper_state_buffer_.writeFromNonRT(gripper_state_type::CHECK_RESTORE_STATE);
-        break;
-      case gripper_state_type::CHECK_RESTORE_STATE:
-        RCLCPP_INFO(get_node()->get_logger(), "Checking the restored state of the gripper");
         gripper_state_buffer_.writeFromNonRT(gripper_state_type::UNDEFINED);
         RCLCPP_INFO(get_node()->get_logger(), "Gripper opened");
         openFlag_ = false;
@@ -664,26 +448,21 @@ void GripperIOController::handleGripperStateTransitionOpen(const gripper_state_t
       }
 }
 
-void GripperIOController::handleReconfigurestateTransition(const reconfigure_state_type & state)
+void GripperIOController::handle_reconfigure_state_transition(const reconfigure_state_type & state)
 {
   switch (state)
     {
     case reconfigure_state_type::UNDEFINED:
       // do nothing
       break;
-    case reconfigure_state_type::RECONFIGURE:
-      // reconfigure the gripper
-      RCLCPP_INFO(get_node()->get_logger(), "Reconfiguring the gripper");
-      reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::FIND_CONFIG);
-      break;
     case reconfigure_state_type::FIND_CONFIG:
       // find the configuration
       RCLCPP_INFO(get_node()->get_logger(), "Finding the configuration");
 
-      config_index_ = std::find(configurationsList_.begin(), configurationsList_.end(), configuration_key_);
+      config_index_ = std::find(configurations_list_.begin(), configurations_list_.end(), configuration_key_);
 
 
-      if (config_index_ == configurationsList_.end())
+      if (config_index_ == configurations_list_.end())
       {
         RCLCPP_ERROR(get_node()->get_logger(), "Configuration not found");
         reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::UNDEFINED);
@@ -691,7 +470,7 @@ void GripperIOController::handleReconfigurestateTransition(const reconfigure_sta
       else
       {
         RCLCPP_INFO(get_node()->get_logger(), "Configuration found");
-        conf_it_ = configMap_[std::distance(configurationsList_.begin(), config_index_)];
+        conf_it_ = config_map_[std::distance(configurations_list_.begin(), config_index_)];
         reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::SET_COMMAND);
       }
 
@@ -705,7 +484,7 @@ void GripperIOController::handleReconfigurestateTransition(const reconfigure_sta
 
       for (const auto & io : conf_it_.command_high)
       {
-        setResult = findAndSetCommand(io, 1.0);
+        setResult = find_and_set_command(io, 1.0);
         if (!setResult)
         {
           RCLCPP_ERROR(
@@ -718,7 +497,7 @@ void GripperIOController::handleReconfigurestateTransition(const reconfigure_sta
       }
       for (const auto & io : conf_it_.command_low)
       {
-        setResult = findAndSetCommand(io, 0.0);
+        setResult = find_and_set_command(io, 0.0);
         if (!setResult)
         {
           RCLCPP_ERROR(
@@ -743,7 +522,7 @@ void GripperIOController::handleReconfigurestateTransition(const reconfigure_sta
       for (const auto & io : conf_it_.state_high)
       {
         // read the state of the gripper
-        setResult = findAndGetState(io, state_value_);
+        setResult = find_and_get_state(io, state_value_);
         // if the state is not as expected, then set the state to the expected state
         if (!setResult)
         {
@@ -770,7 +549,7 @@ void GripperIOController::handleReconfigurestateTransition(const reconfigure_sta
       for (const auto & io : conf_it_.state_low)
       {
         // read the state of the gripper
-        setResult = findAndGetState(io, state_value_);
+        setResult = find_and_get_state(io, state_value_);
         // if the state is not as expected, then set the state to the expected state
         if (!setResult)
         {
@@ -798,7 +577,7 @@ void GripperIOController::handleReconfigurestateTransition(const reconfigure_sta
       {
         RCLCPP_INFO(get_node()->get_logger(), "Reconfigured successfully to configuration: %s", configuration_key_.c_str());
 
-        // publishReconfigureGripperJointStates(); // TODO : remove later, not required
+        // publish_reconfigure_gripper_joint_states(); // TODO : remove later, not required
 
         reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::UNDEFINED);
         configure_gripper_buffer_.writeFromNonRT(""); // this is not required, remove later TODO (Sachin) :s
@@ -811,7 +590,7 @@ void GripperIOController::handleReconfigurestateTransition(const reconfigure_sta
     }
 }
 
-controller_interface::CallbackReturn GripperIOController::checkParameters()
+controller_interface::CallbackReturn GripperIOController::check_parameters()
 {
   /// Param validation 
 
@@ -843,7 +622,7 @@ controller_interface::CallbackReturn GripperIOController::checkParameters()
     return CallbackReturn::FAILURE;
   }
 
-  if (params_.open.set_before_command.high.empty() and params_.open.set_before_command.low.empty())
+  if (params_.open.set_after_command.high.empty() and params_.open.set_after_command.low.empty())
   {
     RCLCPP_FATAL(
       get_node()->get_logger(),
@@ -962,9 +741,22 @@ controller_interface::CallbackReturn GripperIOController::checkParameters()
   return CallbackReturn::SUCCESS;
 }
 
-void GripperIOController::prepareCommandAndStateIos()
+void GripperIOController::prepare_command_and_state_ios()
 {
   // make full command ios lists -- just once
+  for (const auto& key : params_.open.set_after_command.high) {
+    set_before_command_open.push_back(key);
+    set_before_command_open_values.push_back(1.0);
+    command_if_ios.insert(key);
+    state_if_ios.insert(key);
+  }
+
+  for (const auto& key : params_.open.set_after_command.low) {
+    set_before_command_open.push_back(key);
+    set_before_command_open_values.push_back(0.0);
+    command_if_ios.insert(key);
+    state_if_ios.insert(key);
+  } 
   for (const auto& key : params_.open.command.high) {
     command_ios_open.push_back(key);
     command_ios_open_values.push_back(1.0);
@@ -981,16 +773,16 @@ void GripperIOController::prepareCommandAndStateIos()
     state_if_ios.insert(key);
   }
 
-  for (const auto& key : params_.open.set_before_command.high) {
-    set_before_command_open.push_back(key);
-    set_before_command_open_values.push_back(1.0);
+  for (const auto& key : params_.open.set_after_command.high) {
+    set_after_command_open.push_back(key);
+    set_after_command_open_values.push_back(1.0);
     command_if_ios.insert(key);
     state_if_ios.insert(key);
   }
 
-  for (const auto& key : params_.open.set_before_command.low) {
-    set_before_command_open.push_back(key);
-    set_before_command_open_values.push_back(0.0);
+  for (const auto& key : params_.open.set_after_command.low) {
+    set_after_command_open.push_back(key);
+    set_after_command_open_values.push_back(0.0);
     command_if_ios.insert(key);
     state_if_ios.insert(key);
   }
@@ -1051,50 +843,30 @@ void GripperIOController::prepareCommandAndStateIos()
     state_if_ios.insert(key);
   }
 
+  for (const auto& key : params_.close.set_after_command.high) {
+    set_after_command_close.push_back(key);
+    set_after_command_close_values.push_back(1.0);
+    command_if_ios.insert(key);
+    state_if_ios.insert(key);
+  }
+
+  for (const auto& key : params_.close.set_after_command.low) {
+    set_after_command_close.push_back(key);
+    set_after_command_close_values.push_back(0.0);
+    command_if_ios.insert(key);
+    state_if_ios.insert(key);
+  }
   
-
-  // reading param for ios before opening
-  for (const auto& key : params_.open.set_before_command.high) {
-    std::string command_name = key;
-    command_if_ios_before_opening[command_name] = 1.0;
-  }
-
-  for (const auto& key : params_.open.set_before_command.low) {
-    std::string command_name = key;
-    command_if_ios_before_opening[command_name] = 0.0;
-  }
-
-  // copy the values to variable named original
-  original_ios_before_opening = command_if_ios_before_opening;
-
-
-  // reading param for ios before closing
-  for (const auto& key : params_.close.set_before_command.high) {
-    std::string command_name = key;
-    command_if_ios_before_closing[command_name] = 1.0;
-  }
-
-  for (const auto& key : params_.close.set_before_command.low) {
-    std::string command_name = key;
-    command_if_ios_before_closing[command_name] = 0.0;
-  }
-
-  // copy the values to variable named original
-  original_ios_before_closing = command_if_ios_before_closing;
-
-
   // get the configurations for different io which needs to be high or low
   for (const auto & [key, val] : params_.configuration_setup.configurations_map)
   {
-    configMap_.push_back(val);
+    config_map_.push_back(val);
   }
 
   // get the configurations list
-  configurationsList_ = params_.configurations;
+  configurations_list_ = params_.configurations;
 
-  // RCLCPP_INFO(get_node()->get_logger(), "Size of configMap_: %zu", configMap_.size());
-
-  for (const auto & config : configMap_)
+  for (const auto & config : config_map_)
   {
     for (const auto & io : config.command_high)
     {
@@ -1120,41 +892,18 @@ void GripperIOController::prepareCommandAndStateIos()
   // get the configurations for different io which needs to be high or low
   for (const auto & [key, val] : params_.sensors_interfaces.gripper_specific_sensors_map)
   {
-    sensorsMap_.push_back(val);
+    sensors_map_.push_back(val);
   }
 
-
-  // for (const auto & sensor : sensorsMap_)
-  // {
-  //   RCLCPP_INFO(get_node()->get_logger(), "map loop");
-  //   RCLCPP_INFO(get_node()->get_logger(), "size of sensor input %s", sensor.input.c_str());
-  //   // for (const auto & io : sensor.input)
-  //   // {
-  //   //   state_if_ios.insert(io);
-  //   // }
-  // }
-
-  // add states for the gripper specific sensors
-  // for (const auto & [key, val] : params_.sensors_interfaces.gripper_specific_sensors_map)
-  // {
-  //   RCLCPP_INFO(get_node()->get_logger(), "map loop");
-  //   RCLCPP_INFO(get_node()->get_logger(), "Key: %s, %d size", key.c_str(), val.input.size());
-  //   for (const auto & io : val.input)
-  //   {
-  //     RCLCPP_INFO(get_node()->get_logger(), "Adding State IOs %s:  %s", key.c_str(), io.c_str());
-  //     state_if_ios.insert(io);
-  //   }
-  // }
 
   // TODO (Sachin) : Add the gripper specific sensors to the state_if_ios, not able to access the values, discuss this with Dr. Denis
   for (size_t i = 0; i < params_.gripper_specific_sensors.size(); ++i)
   {
     state_if_ios.insert(params_.sensors_interfaces.gripper_specific_sensors_map.at(params_.gripper_specific_sensors[i]).input);
-    // RCLCPP_INFO(get_node()->get_logger(), "Adding State IOs %s: %s", params_.gripper_specific_sensors[i].c_str(), params_.sensors_interfaces.gripper_specific_sensors_map.at(params_.gripper_specific_sensors[i]).input.c_str());
   }
 }
 
-controller_interface::CallbackReturn GripperIOController::preparePublishersAndServices()
+controller_interface::CallbackReturn GripperIOController::prepare_publishers_and_services()
 {
 
   reconfigureFlag_ = false;
@@ -1208,7 +957,7 @@ controller_interface::CallbackReturn GripperIOController::preparePublishersAndSe
   gripper_feedback_ = std::make_shared<GripperAction::Feedback>();
   gripper_result_ = std::make_shared<GripperAction::Result>();
   gripper_action_server_ = rclcpp_action::create_server<GripperAction>(
-    get_node(), "gripper_action",
+    get_node(), "~/gripper_action",
     std::bind(&GripperIOController::handle_goal, this, std::placeholders::_1, std::placeholders::_2),
     std::bind(&GripperIOController::handle_cancel, this, std::placeholders::_1),
     std::bind(&GripperIOController::handle_accepted, this, std::placeholders::_1));
@@ -1222,19 +971,38 @@ controller_interface::CallbackReturn GripperIOController::preparePublishersAndSe
     try
     {
       RCLCPP_INFO(get_node()->get_logger(), "Service called for open");
-      service_buffer_.writeFromNonRT(service_mode_type::OPEN);
-      gripper_state_buffer_.writeFromNonRT(gripper_state_type::OPEN_GRIPPER);
+      if (reconfigureFlag_)
+      {
+        RCLCPP_ERROR(get_node()->get_logger(), "Cannot close the gripper while reconfiguring");
+        response->success = false;
+        return;
+      }
+      // Check if an action is running
+      if (*(gripper_state_buffer_.readFromRT()) != gripper_state_type::UNDEFINED)
+      {
+        RCLCPP_INFO(get_node()->get_logger(), "Canceling current action for open service");
+        gripper_state_buffer_.writeFromNonRT(gripper_state_type::HALTED);
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500)); // wait for 500 ms
       if (closeFlag_)
       {
         closeFlag_ = false;
       }
       openFlag_ = true;
+      service_buffer_.writeFromNonRT(service_mode_type::OPEN);
+      gripper_state_buffer_.writeFromNonRT(gripper_state_type::SET_BEFORE_COMMAND);
       while(openFlag_)
       {
-        // RCLCPP_INFO(get_node()->get_logger(), "opening gripper ...");
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if ((*(gripper_state_buffer_.readFromRT()) == gripper_state_type::HALTED))
+        {
+          response->success = false;
+          break;
+        }
+        else {
+          response->success = true;
+        }
       }
-      response->success = true;
     }
     catch (const std::exception & e)
     {
@@ -1255,8 +1023,21 @@ controller_interface::CallbackReturn GripperIOController::preparePublishersAndSe
     try
     {
       RCLCPP_INFO(get_node()->get_logger(), "Service called for close");
+      if (reconfigureFlag_)
+      {
+        RCLCPP_ERROR(get_node()->get_logger(), "Cannot close the gripper while reconfiguring");
+        response->success = false;
+        return;
+      }
+      // Check if an action is running
+      if (*(gripper_state_buffer_.readFromRT()) != gripper_state_type::UNDEFINED)
+      {
+        RCLCPP_INFO(get_node()->get_logger(), "Canceling current action for close service");
+        gripper_state_buffer_.writeFromNonRT(gripper_state_type::HALTED);
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500)); // wait for 500 ms
       service_buffer_.writeFromNonRT(service_mode_type::CLOSE);
-      gripper_state_buffer_.writeFromNonRT(gripper_state_type::CLOSE_GRIPPER);
+      gripper_state_buffer_.writeFromNonRT(gripper_state_type::SET_BEFORE_COMMAND);
       if (openFlag_)
       {
         openFlag_ = false;
@@ -1264,11 +1045,16 @@ controller_interface::CallbackReturn GripperIOController::preparePublishersAndSe
       closeFlag_ = true;
       while(closeFlag_)
       {
-        // RCLCPP_INFO(get_node()->get_logger(), "closing gripper ...");
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if ((*(gripper_state_buffer_.readFromRT()) == gripper_state_type::HALTED))
+        {
+          response->success = false;
+          break;
+        }
+        else {
+          response->success = true;
+        }
       }
-
-      response->success = true;
     }
     catch (const std::exception & e)
     {
@@ -1286,7 +1072,7 @@ controller_interface::CallbackReturn GripperIOController::preparePublishersAndSe
   gripper_config_feedback_ = std::make_shared<GripperConfigAction::Feedback>();
   gripper_config_result_ = std::make_shared<GripperConfigAction::Result>();
   gripper_config_action_server_ = rclcpp_action::create_server<GripperConfigAction>(
-    get_node(), "reconfigure_gripper_action",
+    get_node(), "~/reconfigure_gripper_action",
     std::bind(&GripperIOController::config_handle_goal, this, std::placeholders::_1, std::placeholders::_2),
     std::bind(&GripperIOController::config_handle_cancel, this, std::placeholders::_1),
     std::bind(&GripperIOController::config_handle_accepted, this, std::placeholders::_1));
@@ -1302,12 +1088,11 @@ controller_interface::CallbackReturn GripperIOController::preparePublishersAndSe
     {
       std::string conf = request->config_name;
       configure_gripper_buffer_.writeFromNonRT(conf.c_str());
-      reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::RECONFIGURE);
+      reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::FIND_CONFIG);
       reconfigureFlag_ = true;
       // wait with thread sleep, until certain flag is not set
       while(reconfigureFlag_)
       {
-        // RCLCPP_INFO(get_node()->get_logger(), "reconfiguring gripper...");
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
       response->result = true;
@@ -1368,27 +1153,11 @@ controller_interface::CallbackReturn GripperIOController::preparePublishersAndSe
       e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
-  
-
-  // TODO (Sachin) : this is not used, will removed this, when cleaning and refactoring the code
-  // try{
-  //   // event publisher
-  //   e_publisher_ =
-  //     get_node()->create_publisher<EventStateMsg>("~/states", rclcpp::SystemDefaultsQoS());
-  //   event_publisher_ = std::make_unique<EventPublisher>(e_publisher_);
-  // }
-  // catch (const std::exception & e)
-  // {
-  //   fprintf(
-  //     stderr, "Exception thrown during publisher creation at configure stage with message : %s \n",
-  //     e.what());
-  //   return controller_interface::CallbackReturn::ERROR;
-  // }
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
-void GripperIOController::publishGripperJointStates()
+void GripperIOController::publish_gripper_joint_states()
 {
   if (gripper_joint_state_publisher_ && gripper_joint_state_publisher_->trylock())
   {
@@ -1401,7 +1170,7 @@ void GripperIOController::publishGripperJointStates()
     
       for (size_t i = 0; i < state_ios_open.size(); ++i)
       {
-        setResult = findAndGetState(state_ios_open[i], state_value_);
+        setResult = find_and_get_state(state_ios_open[i], state_value_);
         if (!setResult)
         {
           RCLCPP_ERROR(
@@ -1433,14 +1202,8 @@ void GripperIOController::publishGripperJointStates()
     }
 
     // find the joint value for reconfigure
-    
       for (const auto & [key, configValues] : params_.configuration_setup.configurations_map)
       {
-
-        
-
-
-        // RCLCPP_INFO(get_node()->get_logger(), "Key: %s, Configure Key: %s", key.c_str(), configuration_key_.c_str());
         if (key != configuration_key_)
         {
           continue;
@@ -1451,8 +1214,7 @@ void GripperIOController::publishGripperJointStates()
 
         for (size_t i = 0; i < configValues.state_high.size(); ++i)
         {
-          // RCLCPP_INFO(get_node()->get_logger(), "Getting the state for %s", configValues.state_high[i].c_str());
-          setResult = findAndGetState(configValues.state_high[i], state_value_);
+          setResult = find_and_get_state(configValues.state_high[i], state_value_);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -1473,8 +1235,7 @@ void GripperIOController::publishGripperJointStates()
 
         for (size_t i = 0; i < configValues.state_low.size(); ++i)
         {
-          // RCLCPP_INFO(get_node()->get_logger(), "Getting the state for %s", configValues.state_low[i].c_str());
-          setResult = findAndGetState(configValues.state_low[i], state_value_);
+          setResult = find_and_get_state(configValues.state_low[i], state_value_);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -1509,7 +1270,7 @@ void GripperIOController::publishGripperJointStates()
 
 }
 
-void GripperIOController::publishDynamicInterfaceValues()
+void GripperIOController::publish_dynamic_interface_values()
 {
   if (interface_publisher_ && interface_publisher_->trylock())
   {
@@ -1536,14 +1297,13 @@ void GripperIOController::publishDynamicInterfaceValues()
 }
 
 
-void GripperIOController::publishReconfigureGripperJointStates()
+void GripperIOController::publish_reconfigure_gripper_joint_states()
 {
   RCLCPP_INFO(get_node()->get_logger(), "Publishing the reconfigured gripper joint states");
   if (config_publisher_ && config_publisher_->trylock())
     {
       for (const auto & [key, configValues] : params_.configuration_setup.configurations_map)
       {
-        // RCLCPP_INFO(get_node()->get_logger(), "Key: %s, Configure Key: %s", key.c_str(), configuration_key_.c_str());
         if (key != configuration_key_)
         {
           continue;
@@ -1555,7 +1315,7 @@ void GripperIOController::publishReconfigureGripperJointStates()
         for (size_t i = 0; i < configValues.state_high.size(); ++i)
         {
           RCLCPP_INFO(get_node()->get_logger(), "Getting the state for %s", configValues.state_high[i].c_str());
-          setResult = findAndGetState(configValues.state_high[i], state_value_);
+          setResult = find_and_get_state(configValues.state_high[i], state_value_);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -1577,7 +1337,7 @@ void GripperIOController::publishReconfigureGripperJointStates()
         for (size_t i = 0; i < configValues.state_low.size(); ++i)
         {
           RCLCPP_INFO(get_node()->get_logger(), "Getting the state for %s", configValues.state_low[i].c_str());
-          setResult = findAndGetState(configValues.state_low[i], state_value_);
+          setResult = find_and_get_state(configValues.state_low[i], state_value_);
           if (!setResult)
           {
             RCLCPP_ERROR(
@@ -1628,9 +1388,20 @@ void GripperIOController::publishReconfigureGripperJointStates()
       
       try
       {
-        RCLCPP_INFO(get_node()->get_logger(), "Action handle goal");
+        if (*(gripper_state_buffer_.readFromRT()) != gripper_state_type::UNDEFINED)
+        {
+          RCLCPP_INFO(get_node()->get_logger(), "Canceling current services for open/close action");
+          gripper_state_buffer_.writeFromNonRT(gripper_state_type::HALTED);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500)); // wait for 500 ms
+        RCLCPP_INFO(get_node()->get_logger(), "Action handle goal for open/close gripper");
+        if (reconfigureFlag_)
+        {
+          RCLCPP_ERROR(get_node()->get_logger(), "Cannot close the gripper while reconfiguring");
+          return rclcpp_action::GoalResponse::REJECT;
+        }
         service_buffer_.writeFromNonRT((goal->open) ? service_mode_type::OPEN : service_mode_type::CLOSE);
-        gripper_state_buffer_.writeFromNonRT((goal->open) ? gripper_state_type::OPEN_GRIPPER : gripper_state_type::CLOSE_GRIPPER);
+        gripper_state_buffer_.writeFromNonRT(gripper_state_type::SET_BEFORE_COMMAND);
       }
       catch (const std::exception & e)
       {
@@ -1647,9 +1418,6 @@ void GripperIOController::publishReconfigureGripperJointStates()
     (void)goal_handle;
       service_buffer_.writeFromNonRT(service_mode_type::UNDEFINED);
       gripper_state_buffer_.writeFromNonRT(gripper_state_type::UNDEFINED);
-      gripper_result_->success = false;
-      gripper_result_->message = "Gripper action canceled";
-      goal_handle->canceled(gripper_result_);
       return rclcpp_action::CancelResponse::ACCEPT;
     }
 
@@ -1666,9 +1434,16 @@ void GripperIOController::publishReconfigureGripperJointStates()
     {
       if (*(gripper_state_buffer_.readFromRT()) == gripper_state_type::UNDEFINED)
       {
-        gripper_result_->success = false;
+        gripper_result_->success = true;
         gripper_result_->message = "Gripper action executed";
         goal_handle->succeed(gripper_result_);
+        break;
+      }
+      else if (*(gripper_state_buffer_.readFromRT()) == gripper_state_type::HALTED)
+      {
+        gripper_result_->success = false;
+        gripper_result_->message = "Gripper action halted";
+        goal_handle->abort(gripper_result_);
         break;
       }
       else 
@@ -1689,7 +1464,7 @@ void GripperIOController::publishReconfigureGripperJointStates()
     {
       std::string conf = goal->config_name;
       configure_gripper_buffer_.writeFromNonRT(conf.c_str());
-      reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::RECONFIGURE);
+      reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::FIND_CONFIG);
       reconfigureFlag_ = true;
       
     }
@@ -1707,12 +1482,10 @@ void GripperIOController::publishReconfigureGripperJointStates()
   rclcpp_action::CancelResponse GripperIOController::config_handle_cancel(
     const std::shared_ptr<GoalHandleGripperConfig> goal_handle)
     {
-      // gripper_config_result_->result = false;
-      // gripper_config_result_->status = "Failed to reconfigure gripper";
-      // goal_handle->canceled(gripper_config_result_);
-
       RCLCPP_INFO(get_node()->get_logger(), "Received request to cancel goal");
     (void)goal_handle;
+    configure_gripper_buffer_.writeFromNonRT("");
+    reconfigure_state_buffer_.writeFromNonRT(reconfigure_state_type::FIND_CONFIG);
     return rclcpp_action::CancelResponse::ACCEPT;
 
     }
@@ -1728,7 +1501,6 @@ void GripperIOController::publishReconfigureGripperJointStates()
     {
       if(*(reconfigure_state_buffer_.readFromRT()) == reconfigure_state_type::UNDEFINED)
       {
-        // RCLCPP_INFO(get_node()->get_logger(), "reconfiguring gripper...");
         gripper_config_result_->result = true;
         gripper_config_result_->status = "Gripper reconfigured";
         goal_handle->succeed(gripper_config_result_);
@@ -1745,7 +1517,7 @@ void GripperIOController::publishReconfigureGripperJointStates()
   }
   
 
-// void GripperIOController::initMsgs()
+// void GripperIOController::init_msgs()
 // {
 //   for (const auto & name : state_interfaces_)
 //   {

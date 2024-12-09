@@ -47,12 +47,11 @@ gripper_io_controller:
       low: {
         type: string_array,
         default_value: [],
-        description: "(optional) list of command interface names that have to be set to low (0.0) before opening the gripper.",
+        description: "(optional) list of command interfaces that have to be set to low (0.0) before opening the gripper",
         validation: {
           unique<>: null,
         }
       }
-    
     command:
       high: {
         type: string_array,
@@ -83,6 +82,23 @@ gripper_io_controller:
         type: string_array,
         default_value: [],
         description: "(optional) list of state interfaces that have to equal low (0.0) to represent the gripper is open.",
+        validation: {
+          unique<>: null,
+        }
+      }
+    set_after_command:
+      high: {
+        type: string_array,
+        default_value: [],
+        description: "(optional) list of command interfaces that have to be set to high (1.0) after opening the gripper",
+        validation: {
+          unique<>: null,
+        }
+      }
+      low: {
+        type: string_array,
+        default_value: [],
+        description: "(optional) list of command interface names that have to be set to low (0.0) after opening the gripper.",
         validation: {
           unique<>: null,
         }
@@ -143,6 +159,23 @@ gripper_io_controller:
         type: string_array,
         default_value: [],
         description: "(optional) list of state interfaces that have to equal low (0.0) to represent the gripper is closed",
+        validation: {
+          unique<>: null,
+        }
+      }
+    set_after_command:
+      high: {
+        type: string_array,
+        default_value: [],
+        description: "(optional) list of command interfaces that have to be set to high (1.0) after closing the gripper",
+        validation: {
+          unique<>: null,
+        }
+      }
+      low: {
+        type: string_array,
+        default_value: [],
+        description: "(optional) list of command interface names that have to be set to low (0.0) after closing the gripper.",
         validation: {
           unique<>: null,
         }

@@ -62,23 +62,23 @@ install(
 
 if(BUILD_TESTING)
 
-  # ament_add_gmock(test_load_gripper_io_controller test/test_load_gripper_io_controller.cpp)
-  # target_include_directories(test_load_gripper_io_controller PRIVATE include)
-  # ament_target_dependencies(
-  #   test_load_gripper_io_controller
-  #   controller_manager
-  #   hardware_interface
-  #   ros2_control_test_assets
-  # )
-  #
-  # ament_add_gmock(test_gripper_io_controller test/test_gripper_io_controller.cpp)
-  # target_include_directories(test_gripper_io_controller PRIVATE include)
-  # target_link_libraries(test_gripper_io_controller gripper_io_controller)
-  # ament_target_dependencies(
-  #   test_gripper_io_controller
-  #   controller_interface
-  #   hardware_interface
-  # )
+  ament_add_gmock(test_load_gripper_io_controller test/test_load_gripper_io_controller.cpp)
+  target_include_directories(test_load_gripper_io_controller PRIVATE include)
+  ament_target_dependencies(
+    test_load_gripper_io_controller
+    controller_manager
+    hardware_interface
+    ros2_control_test_assets
+  )
+
+  ament_add_gmock(test_gripper_io_controller test/test_gripper_io_controller.cpp)
+  target_include_directories(test_gripper_io_controller PRIVATE include)
+  target_link_libraries(test_gripper_io_controller gripper_io_controller)
+  ament_target_dependencies(
+    test_gripper_io_controller
+    controller_interface
+    hardware_interface
+  )
 
 endif()
 
