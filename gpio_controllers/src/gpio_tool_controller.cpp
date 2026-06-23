@@ -1005,7 +1005,7 @@ GpioToolController::EngagingSrvType::Response GpioToolController::process_reconf
     response.message = "Tool can be reconfigured only in '" + params_.disengaged.name +
                        "' state. Current state is '" + current_state_.get() + "'.";
   }
-  if (response.success || params_.enable_config_engaged)
+  if (response.success)
   {
     current_tool_action_.store(ToolAction::RECONFIGURING);
     current_tool_transition_.store(GPIOToolTransition::SET_BEFORE_COMMAND);
