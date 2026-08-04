@@ -15,6 +15,7 @@
 #include "joint_trajectory_controller/joint_trajectory_controller.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -63,7 +64,7 @@ controller_interface::CallbackReturn JointTrajectoryController::on_init()
   }
 
   const std::string & urdf = get_robot_description();
-  std::vector<double> max_joint_vel(params_.joints.size(), 0.0);
+  max_joint_vel_.assign(params_.joints.size(), 0.0);
   if (!urdf.empty())
   {
     urdf::Model model;
@@ -82,7 +83,7 @@ controller_interface::CallbackReturn JointTrajectoryController::on_init()
         auto urdf_joint = model.getJoint(params_.joints[i]);
         if (urdf_joint)
         {
-          max_joint_vel[i] = urdf_joint->limits->velocity;
+          max_joint_vel_[i] = urdf_joint->limits->velocity;
         }
         if (urdf_joint && urdf_joint->type == urdf::Joint::CONTINUOUS)
         {
@@ -114,6 +115,7 @@ controller_interface::CallbackReturn JointTrajectoryController::on_init()
   if (params_.constraints.decelerate_on_cancel)
   {
     max_decel_.resize(params_.joints.size(), 0.0);
+    stop_velocity_.resize(params_.joints.size(), 0.0);
     stop_time_.resize(params_.joints.size(), 0.0);
     hold_position_.resize(params_.joints.size(), 0.0);
     stop_direction_.resize(params_.joints.size(), 0.0);
@@ -134,13 +136,13 @@ controller_interface::CallbackReturn JointTrajectoryController::on_init()
           params_.joints[i].c_str(), max_decel_[i]);
         should_decelerate_on_cancel_ = false;
       }
-      if (max_joint_vel[i] <= 0.0)
+      if (max_joint_vel_[i] <= 0.0)
       {
         RCLCPP_ERROR(
           get_node()->get_logger(),
           "Joint [%s] has invalid joint velocity defined in URDF [%.1f]. "
           "Falling back to hold position on cancel.",
-          params_.joints[i].c_str(), max_joint_vel[i]);
+          params_.joints[i].c_str(), max_joint_vel_[i]);
         should_decelerate_on_cancel_ = false;
       }
     }
@@ -151,7 +153,7 @@ controller_interface::CallbackReturn JointTrajectoryController::on_init()
       // find the joint with the largest max time to stop
       for (size_t i = 0; i < params_.joints.size(); ++i)
       {
-        stop_time_[i] = max_joint_vel[i] / max_decel_[i];
+        stop_time_[i] = max_joint_vel_[i] / max_decel_[i];
         max_t_stop = std::max(max_t_stop, stop_time_[i]);
       }
       // Number of points at multiples of sample_period (include initial point at t=0)
@@ -1937,24 +1939,40 @@ JointTrajectoryController::decelerate_to_hold_position()
 {
   double max_t_stop = 0.0;
   const auto & p0 = state_current_.positions;
-  const auto & v0 = state_current_.velocities;
+  const auto & v_measured = state_current_.velocities;
   for (size_t i = 0; i < num_cmd_joints_; ++i)
   {
-    stop_direction_[i] = (v0[i] >= 0.0) ? 1.0 : -1.0;
+    // A measured velocity beyond the URDF limit is a glitched sample: seeding the
+    // ramp from it inflates the quadratic stop distance and commands positions far
+    // past the joint limits. Fall back to the last commanded velocity, which is
+    // bounded by the executed trajectory.
+    stop_velocity_[i] = v_measured[i];
+    if (!std::isfinite(stop_velocity_[i]) || std::abs(stop_velocity_[i]) > max_joint_vel_[i])
+    {
+      const double v_cmd = last_commanded_state_.velocities[i];
+      stop_velocity_[i] = std::isfinite(v_cmd) ? v_cmd : 0.0;
+      RCLCPP_WARN(
+        get_node()->get_logger(),
+        "Joint [%s] measured velocity [%.3f] exceeds its URDF limit [%.3f]; seeding the stop "
+        "ramp from the last commanded velocity [%.3f].",
+        params_.joints[i].c_str(), v_measured[i], max_joint_vel_[i], stop_velocity_[i]);
+    }
+    const double v0 = stop_velocity_[i];
+    stop_direction_[i] = (v0 >= 0.0) ? 1.0 : -1.0;
 
     // Time to stop (constant decel)
-    stop_time_[i] = std::abs(v0[i]) / max_decel_[i];
+    stop_time_[i] = std::abs(v0) / max_decel_[i];
     max_t_stop = std::max(max_t_stop, stop_time_[i]);
 
     // Analytical stop distance and hold position
-    const double stop_distance = (v0[i] * v0[i]) / (2.0 * max_decel_[i]);
+    const double stop_distance = (v0 * v0) / (2.0 * max_decel_[i]);
     hold_position_[i] = p0[i] + stop_direction_[i] * stop_distance;
 
     RCLCPP_DEBUG(
       get_node()->get_logger(),
       "Joint [%s] decel [%.3f], stop dist [%.4f], initial vel [%.4f], initial pos [%.4f], hold pos "
       "[%.4f], time to stop [%.4f]",
-      params_.joints[i].c_str(), max_decel_[i], stop_distance, v0[i], p0[i], hold_position_[i],
+      params_.joints[i].c_str(), max_decel_[i], stop_distance, v0, p0[i], hold_position_[i],
       stop_time_[i]);
   }
 
@@ -1984,16 +2002,17 @@ JointTrajectoryController::decelerate_to_hold_position()
     auto & pt = stop_trajectory_->points[k];
     for (size_t i = 0; i < num_cmd_joints_; ++i)
     {
+      const double v0 = stop_velocity_[i];
       // if the joint still needs more time to stop and had an initial non-zero velocity
-      if (t < stop_time_[i] && std::abs(v0[i]) > std::numeric_limits<float>::epsilon())
+      if (t < stop_time_[i] && std::abs(v0) > std::numeric_limits<float>::epsilon())
       {
         // Constant deceleration
         // v(t) = v0 - stop_direction_ * a * t
-        double v = v0[i] - stop_direction_[i] * max_decel_[i] * t;
+        double v = v0 - stop_direction_[i] * max_decel_[i] * t;
         // Guard against numerical crossing
         if ((v * stop_direction_[i]) < 0.0) v = 0.0;
         // p(t) = p0 + v0 * t - 0.5 * stop_direction_ * a * t^2
-        const double p = p0[i] + v0[i] * t - 0.5 * stop_direction_[i] * max_decel_[i] * t * t;
+        const double p = p0[i] + v0 * t - 0.5 * stop_direction_[i] * max_decel_[i] * t * t;
         pt.positions[i] = p;
         pt.velocities[i] = v;
         pt.accelerations[i] = -stop_direction_[i] * max_decel_[i];

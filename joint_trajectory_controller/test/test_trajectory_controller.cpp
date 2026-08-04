@@ -3200,3 +3200,51 @@ TEST_F(TrajectoryControllerTest, decelerate_to_hold_position_velocity_command_ra
 
   executor.cancel();
 }
+
+/**
+ * @brief A measured velocity beyond the URDF limit is a glitched sample: the stop
+ * ramp seeds from the last commanded velocity for that joint instead, so the stop
+ * distance stays bounded. Joints with a plausible measured velocity keep the
+ * existing behavior and seed from the measurement; a glitched joint without a
+ * finite commanded velocity holds in place.
+ */
+TEST_F(TrajectoryControllerTest, decelerate_to_hold_position_rejects_implausible_velocity)
+{
+  rclcpp::executors::MultiThreadedExecutor executor;
+  constexpr double max_decel = 10.0;
+  // joint1 within the 0.2 rad/s URDF limit, joint2 and joint3 glitched
+  const std::vector<double> measured_vel = {0.15, 5.0, -5.0};
+  const std::vector<double> commanded_vel = {0.05, -0.1, std::numeric_limits<double>::quiet_NaN()};
+
+  std::vector<rclcpp::Parameter> params = {
+    rclcpp::Parameter("constraints.joint1.max_deceleration_on_cancel", max_decel),
+    rclcpp::Parameter("constraints.joint2.max_deceleration_on_cancel", max_decel),
+    rclcpp::Parameter("constraints.joint3.max_deceleration_on_cancel", max_decel),
+    rclcpp::Parameter("constraints.decelerate_on_cancel", true)};
+
+  SetUpAndActivateTrajectoryController(
+    executor, params, false, 0.0, 1.0, INITIAL_POS_JOINTS, measured_vel);
+
+  ASSERT_TRUE(traj_controller_->has_velocity_state_interface());
+
+  trajectory_msgs::msg::JointTrajectoryPoint last_commanded;
+  last_commanded.positions = INITIAL_POS_JOINTS;
+  last_commanded.velocities = commanded_vel;
+  traj_controller_->set_last_commanded_state(last_commanded);
+
+  const auto stop_traj = traj_controller_->trigger_decelerate_to_hold_position();
+  ASSERT_FALSE(stop_traj->points.empty());
+
+  // joint1 seeds from the measured 0.15, joint2 from the commanded -0.1, joint3 holds
+  const std::vector<double> seed_vel = {measured_vel[0], commanded_vel[1], 0.0};
+  for (size_t i = 0; i < 3; ++i)
+  {
+    const double direction = (seed_vel[i] >= 0.0) ? 1.0 : -1.0;
+    const double stop_dist = (seed_vel[i] * seed_vel[i]) / (2.0 * max_decel);
+    EXPECT_NEAR(
+      INITIAL_POS_JOINTS[i] + direction * stop_dist, stop_traj->points.back().positions[i], EPS);
+    EXPECT_NEAR(0.0, stop_traj->points.back().velocities[i], EPS);
+  }
+
+  executor.cancel();
+}

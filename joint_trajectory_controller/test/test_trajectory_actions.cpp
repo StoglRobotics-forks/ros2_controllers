@@ -968,6 +968,70 @@ TEST_P(TestTrajectoryActionsTestParameterized, test_cancel_decelerate_fallback)
   expectCommandPoint(cancelled_position);
 }
 
+TEST_P(TestTrajectoryActionsTestParameterized, test_cancel_decelerate_ignores_state_velocity_spike)
+{
+  // a measured velocity glitched beyond the URDF limit must not inflate the stop
+  // distance; the ramp falls back to the last commanded velocity for that joint
+  std::vector<rclcpp::Parameter> params = {
+    rclcpp::Parameter("constraints.joint1.max_deceleration_on_cancel", 10.0),
+    rclcpp::Parameter("constraints.joint2.max_deceleration_on_cancel", 10.0),
+    rclcpp::Parameter("constraints.joint3.max_deceleration_on_cancel", 10.0),
+    rclcpp::Parameter("constraints.decelerate_on_cancel", true)};
+  // separate command and state values so the measured velocity can be glitched
+  SetUpExecutor(params, true);
+  SetUpControllerHardware();
+
+  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+  // send goal
+  {
+    std::vector<JointTrajectoryPoint> points;
+    JointTrajectoryPoint point;
+    point.time_from_start = rclcpp::Duration::from_seconds(1.0);
+    point.positions.resize(joint_names_.size());
+    point.velocities.resize(joint_names_.size());
+
+    point.positions[0] = 4.0;
+    point.positions[1] = 5.0;
+    point.positions[2] = 6.0;
+    point.velocities[0] = 4.0;
+    point.velocities[1] = 5.0;
+    point.velocities[2] = 6.0;
+    points.push_back(point);
+
+    control_msgs::action::FollowJointTrajectory_Goal goal_msg;
+    goal_msg.goal_time_tolerance = rclcpp::Duration::from_seconds(2.0);
+    goal_msg.trajectory.joint_names = joint_names_;
+    goal_msg.trajectory.points = points;
+
+    // send and wait for half a second before cancel
+    gh_future = action_client_->async_send_goal(goal_msg, goal_options_);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    // measured velocity spikes right when the cancel arrives
+    joint_state_vel_[0] = 100.0;
+    joint_state_vel_[1] = 100.0;
+    joint_state_vel_[2] = 100.0;
+
+    const auto goal_handle = gh_future.get();
+    action_client_->async_cancel_goal(goal_handle);
+  }
+  controller_hw_thread_.join();
+
+  EXPECT_TRUE(gh_future.get());
+  EXPECT_EQ(rclcpp_action::ResultCode::CANCELED, common_resultcode_);
+  EXPECT_EQ(
+    control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
+
+  // run update for long enough to allow the joints to come to a stop
+  updateControllerAsync(rclcpp::Duration::from_seconds(0.5));
+
+  // a ramp seeded from the commanded motion stops close to the goal positions;
+  // one seeded from the 100 rad/s spike would run tens of radians further
+  EXPECT_LT(std::abs(joint_pos_[0]), 20.0);
+  EXPECT_LT(std::abs(joint_pos_[1]), 20.0);
+  EXPECT_LT(std::abs(joint_pos_[2]), 20.0);
+}
+
 TEST_P(TestTrajectoryActionsTestParameterized, test_allow_nonzero_velocity_at_trajectory_end_true)
 {
   std::vector<rclcpp::Parameter> params = {

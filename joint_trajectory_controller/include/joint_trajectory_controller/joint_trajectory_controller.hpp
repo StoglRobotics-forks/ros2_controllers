@@ -154,6 +154,10 @@ protected:
   bool should_decelerate_on_cancel_ = false;
   // reserved storage for the max deceleration values
   std::vector<double> max_decel_;
+  // URDF velocity limit per joint, used to reject glitched velocity measurements
+  std::vector<double> max_joint_vel_;
+  // reserved storage for the sanitized velocity each stop ramp is seeded from
+  std::vector<double> stop_velocity_;
   // reserved storage for each joints max stopping time
   std::vector<double> stop_time_;
   // reserved storage for each joints hold position at stop
