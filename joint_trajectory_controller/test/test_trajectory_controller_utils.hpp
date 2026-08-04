@@ -206,6 +206,16 @@ public:
   trajectory_msgs::msg::JointTrajectoryPoint get_state_error() { return state_error_; }
   trajectory_msgs::msg::JointTrajectoryPoint get_current_command() { return command_current_; }
 
+  void set_last_commanded_state(const trajectory_msgs::msg::JointTrajectoryPoint & point)
+  {
+    last_commanded_state_ = point;
+  }
+
+  std::shared_ptr<trajectory_msgs::msg::JointTrajectory> trigger_decelerate_to_hold_position()
+  {
+    return decelerate_to_hold_position();
+  }
+
   /**
    * a copy of the private member function
    */
