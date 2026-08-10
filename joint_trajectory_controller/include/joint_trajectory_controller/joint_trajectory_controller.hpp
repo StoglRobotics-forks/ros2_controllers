@@ -33,6 +33,8 @@
 #include "joint_trajectory_controller/interpolation_methods.hpp"
 #include "joint_trajectory_controller/tolerances.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
+#include "kinematics_interface/kinematics_interface.hpp"
+#include "pluginlib/class_loader.hpp"
 #include "rclcpp/duration.hpp"
 #include "rclcpp/subscription.hpp"
 #include "rclcpp/time.hpp"
@@ -103,6 +105,11 @@ protected:
   size_t dof_;
   size_t num_cmd_joints_;
   std::vector<size_t> map_cmd_to_joints_;
+
+  // Kinematics interface plugin loader
+  std::shared_ptr<pluginlib::ClassLoader<kinematics_interface::KinematicsInterface>>
+    kinematics_loader_;
+  std::unique_ptr<kinematics_interface::KinematicsInterface> kinematics_;
 
   // Storing command joint names for interfaces
   std::vector<std::string> command_joint_names_;

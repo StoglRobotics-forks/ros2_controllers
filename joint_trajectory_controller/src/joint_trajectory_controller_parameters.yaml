@@ -256,3 +256,29 @@ joint_trajectory_controller:
           gt_eq: [0.0]
         }
       }
+  kinematics:
+    plugin_name: {
+      type: string,
+      default_value: "",
+      description: "Specifies the name of the kinematics plugin to load. Optional: leave empty to skip loading a kinematics plugin entirely (only needed by IK-dependent features)."
+    }
+    plugin_package: {
+      type: string,
+      default_value: "",
+      description: "Specifies the package name that contains the kinematics plugin."
+    }
+    base: {
+      type: string,
+      default_value: "",
+      description: "Specifies the base link of the robot description used by the kinematics plugin."
+    }
+    tip: {
+      type: string,
+      default_value: "",
+      description: "Specifies the end effector link of the robot description used by the kinematics plugin."
+    }
+    alpha: {
+      type: double,
+      default_value: 0.01,
+      description: "Specifies the damping coefficient for the Jacobian pseudo inverse."
+    }

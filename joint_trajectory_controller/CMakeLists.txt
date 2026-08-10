@@ -26,6 +26,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   tf2_geometry_msgs
   trajectory_msgs
   urdf
+  kinematics_interface
 )
 
 find_package(ament_cmake REQUIRED)
@@ -65,6 +66,7 @@ target_link_libraries(joint_trajectory_controller PUBLIC
                       ruckig::ruckig
                       urdf::urdf
                       angles::angles
+                      kinematics_interface::kinematics_interface
                       ${trajectory_msgs_TARGETS}
                       ${control_msgs_TARGETS})
 
