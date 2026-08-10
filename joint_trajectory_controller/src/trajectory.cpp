@@ -406,6 +406,40 @@ bool Trajectory::sample(
   return true;
 }
 
+// NOTE(rebase): this overload (without the splines_state/ruckig_state/ruckig_input_state debug
+// outputs) was declared in the header but never actually defined anywhere -- nothing called it,
+// so it never caused a link error, but it also wasn't usable. Defined here as a delegate to the
+// full debug-output overload below, mirroring Trajectory::sample()'s equivalent delegation above.
+bool Trajectory::interpolate_between_points(
+  const rclcpp::Time & time_a, const trajectory_msgs::msg::JointTrajectoryPoint & state_a,
+  const rclcpp::Time & time_b, const trajectory_msgs::msg::JointTrajectoryPoint & state_b,
+  const rclcpp::Time & sample_time, const bool do_ruckig_smoothing, const bool skip_splines,
+  trajectory_msgs::msg::JointTrajectoryPoint & output, const rclcpp::Duration & period,
+  const std::vector<joint_limits::JointLimits> & joint_limits)
+{
+  trajectory_msgs::msg::JointTrajectoryPoint splines_state, ruckig_state, ruckig_input_state;
+  return interpolate_between_points(
+    time_a, state_a, time_b, state_b, sample_time, do_ruckig_smoothing, skip_splines, output,
+    period, joint_limits, splines_state, ruckig_state, ruckig_input_state);
+}
+
+// NOTE(rebase): delegates to the skip_splines overload above with skip_splines=false (i.e. do the
+// normal spline interpolation). Added because skip_splines was introduced (by the commit adding
+// Ruckig smoothing) as a required param positioned before the non-defaultable `output` ref, so it
+// can't just get a default value there -- this overload keeps the ~9 pre-Ruckig test call sites
+// in test_trajectory.cpp compiling unchanged.
+bool Trajectory::interpolate_between_points(
+  const rclcpp::Time & time_a, const trajectory_msgs::msg::JointTrajectoryPoint & state_a,
+  const rclcpp::Time & time_b, const trajectory_msgs::msg::JointTrajectoryPoint & state_b,
+  const rclcpp::Time & sample_time, const bool do_ruckig_smoothing,
+  trajectory_msgs::msg::JointTrajectoryPoint & output, const rclcpp::Duration & period,
+  const std::vector<joint_limits::JointLimits> & joint_limits)
+{
+  return interpolate_between_points(
+    time_a, state_a, time_b, state_b, sample_time, do_ruckig_smoothing, false, output, period,
+    joint_limits);
+}
+
 bool Trajectory::interpolate_between_points(
   const rclcpp::Time & time_a, const trajectory_msgs::msg::JointTrajectoryPoint & state_a,
   const rclcpp::Time & time_b, const trajectory_msgs::msg::JointTrajectoryPoint & state_b,

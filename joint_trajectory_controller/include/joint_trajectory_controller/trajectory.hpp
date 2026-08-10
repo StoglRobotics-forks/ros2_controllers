@@ -158,6 +158,19 @@ public:
     const rclcpp::Duration & period = rclcpp::Duration(0, 0),
     const std::vector<joint_limits::JointLimits> & joint_limits = {});
 
+  // NOTE(rebase): skip_splines was added (by the commit introducing Ruckig smoothing) as a
+  // required param positioned before the non-defaultable `output` ref, so unlike period/
+  // joint_limits above it can't just get a default value in the overload above. This overload
+  // keeps existing pre-Ruckig callers (tests) compiling unchanged, defaulting to
+  // skip_splines=false (i.e. do the normal spline interpolation).
+  bool interpolate_between_points(
+    const rclcpp::Time & time_a, const trajectory_msgs::msg::JointTrajectoryPoint & state_a,
+    const rclcpp::Time & time_b, const trajectory_msgs::msg::JointTrajectoryPoint & state_b,
+    const rclcpp::Time & sample_time, const bool do_ruckig_smoothing,
+    trajectory_msgs::msg::JointTrajectoryPoint & output,
+    const rclcpp::Duration & period = rclcpp::Duration(0, 0),
+    const std::vector<joint_limits::JointLimits> & joint_limits = {});
+
   // NOTE(rebase): overload carrying the splines_state/ruckig_state/ruckig_input_state debug
   // outputs added upstream. They're non-const references, so unlike period/joint_limits above they
   // can't just get default values (a non-const reference can't bind to a temporary) - this overload

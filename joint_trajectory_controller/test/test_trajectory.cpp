@@ -1007,7 +1007,7 @@ TEST(TestTrajectory, update_trajectory)
   snd_msg->points.push_back(p2);
   snd_msg->points.push_back(p3);
 
-  traj.update(snd_msg);
+  traj.update(snd_msg, {}, rclcpp::Duration(0, 0));
 
   // Sample at starting time
   {
