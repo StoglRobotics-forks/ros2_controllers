@@ -92,13 +92,16 @@ CartesianTrajectoryGenerator::CartesianTrajectoryGenerator()
 {
 }
 
-controller_interface::InterfaceConfiguration
-CartesianTrajectoryGenerator::state_interface_configuration() const
-{
-  controller_interface::InterfaceConfiguration conf;
-  conf.type = controller_interface::interface_configuration_type::NONE;
-  return conf;
-}
+// NOTE(rebase): commented out (not deleted) -- params_.joints is now the real robot joint list,
+// so this override is no longer needed; the inherited state_interface_configuration() correctly
+// claims real joint state interfaces from it. Kept here for review before the next step.
+// controller_interface::InterfaceConfiguration
+// CartesianTrajectoryGenerator::state_interface_configuration() const
+// {
+//   controller_interface::InterfaceConfiguration conf;
+//   conf.type = controller_interface::interface_configuration_type::NONE;
+//   return conf;
+// }
 
 controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
   const rclcpp_lifecycle::State & previous_state)
@@ -109,10 +112,23 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
     return ret;
   }
 
-  // set all position per default to not use positions
-  for (const auto & joint_name : command_joint_names_)
+  // NOTE(rebase): keyed by params_.kinematics.cartesian_axes, not command_joint_names_ --
+  // command_joint_names_ is now the real robot joint list, but use_position_input_ tracks
+  // per-Cartesian-axis mode (position-hold vs velocity-streaming), so it needs the Cartesian axis
+  // labels instead.
+  if (params_.kinematics.cartesian_axes.size() != 6)
   {
-    use_position_input_[joint_name] = realtime_tools::RealtimeBuffer(false);
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "params_.kinematics.cartesian_axes must list exactly 6 entries (x, y, z, rx, ry, rz order), "
+      "got %zu.",
+      params_.kinematics.cartesian_axes.size());
+    return CallbackReturn::FAILURE;
+  }
+  // set all position per default to not use positions
+  for (const auto & axis_name : params_.kinematics.cartesian_axes)
+  {
+    use_position_input_[axis_name] = realtime_tools::RealtimeBuffer(false);
   }
 
   // topics QoS
@@ -162,19 +178,31 @@ void CartesianTrajectoryGenerator::reference_callback(
   // store input ref for later use
   input_ref_.writeFromNonRT(msg);
 
-  trajectory_msgs::msg::JointTrajectoryPoint state;
-  resize_joint_trajectory_point(state, dof_);
-  read_state_from_state_interfaces(state);
+  // NOTE(rebase): inlined here instead of going through read_state_from_state_interfaces() --
+  // that method is now the inherited, real-joint-space one (see on_configure()'s NOTE above), so
+  // it can no longer be reused to get the current Cartesian pose. This is the same tf2 quaternion
+  // -> RPY conversion the old (now commented-out) override did, just moved here since it's now
+  // specific to this Cartesian-feedback-parsing use, not a general state read.
+  trajectory_msgs::msg::JointTrajectoryPoint cartesian_state;
+  cartesian_state.positions.resize(6);
+  const auto measured_state = *(feedback_.readFromRT());
+  tf2::Quaternion measured_q;
+  tf2::fromMsg(measured_state->pose.pose.orientation, measured_q);
+  tf2::Matrix3x3 m(measured_q);
+  m.getRPY(cartesian_state.positions[3], cartesian_state.positions[4], cartesian_state.positions[5]);
+  cartesian_state.positions[0] = measured_state->pose.pose.position.x;
+  cartesian_state.positions[1] = measured_state->pose.pose.position.y;
+  cartesian_state.positions[2] = measured_state->pose.pose.position.z;
 
   // assume for now that we are working with trajectories with one point - we don't know exactly
   // where we are in the trajectory before sampling - nevertheless this should work for the use case
   auto new_traj_msg = std::make_shared<trajectory_msgs::msg::JointTrajectory>();
-  new_traj_msg->joint_names = params_.joints;
+  new_traj_msg->joint_names = params_.kinematics.cartesian_axes;
   new_traj_msg->points.resize(1);
   new_traj_msg->points[0].positions.resize(
-    params_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    params_.kinematics.cartesian_axes.size(), std::numeric_limits<double>::quiet_NaN());
   new_traj_msg->points[0].velocities.resize(
-    params_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    params_.kinematics.cartesian_axes.size(), std::numeric_limits<double>::quiet_NaN());
   new_traj_msg->points[0].time_from_start = rclcpp::Duration::from_seconds(0.01);
 
   // check all axes for "type" of messages coming in. If there are velocity values in a filed then
@@ -215,122 +243,131 @@ void CartesianTrajectoryGenerator::reference_callback(
   };
 
   assign_value_depending_on_input(
-    msg->transforms[0].translation.x, msg->velocities[0].linear.x, params_.joints[0], 0,
-    state.positions[0]);
+    msg->transforms[0].translation.x, msg->velocities[0].linear.x, params_.kinematics.cartesian_axes[0], 0,
+    cartesian_state.positions[0]);
   assign_value_depending_on_input(
-    msg->transforms[0].translation.y, msg->velocities[0].linear.y, params_.joints[1], 1,
-    state.positions[1]);
+    msg->transforms[0].translation.y, msg->velocities[0].linear.y, params_.kinematics.cartesian_axes[1], 1,
+    cartesian_state.positions[1]);
   assign_value_depending_on_input(
-    msg->transforms[0].translation.z, msg->velocities[0].linear.z, params_.joints[2], 2,
-    state.positions[2]);
+    msg->transforms[0].translation.z, msg->velocities[0].linear.z, params_.kinematics.cartesian_axes[2], 2,
+    cartesian_state.positions[2]);
   assign_value_depending_on_input(
-    msg->transforms[0].rotation.x, msg->velocities[0].angular.x, params_.joints[3], 3,
-    state.positions[3]);
+    msg->transforms[0].rotation.x, msg->velocities[0].angular.x, params_.kinematics.cartesian_axes[3], 3,
+    cartesian_state.positions[3]);
   assign_value_depending_on_input(
-    msg->transforms[0].rotation.y, msg->velocities[0].angular.y, params_.joints[4], 4,
-    state.positions[4]);
+    msg->transforms[0].rotation.y, msg->velocities[0].angular.y, params_.kinematics.cartesian_axes[4], 4,
+    cartesian_state.positions[4]);
   assign_value_depending_on_input(
-    msg->transforms[0].rotation.z, msg->velocities[0].angular.z, params_.joints[5], 5,
-    state.positions[5]);
+    msg->transforms[0].rotation.z, msg->velocities[0].angular.z, params_.kinematics.cartesian_axes[5], 5,
+    cartesian_state.positions[5]);
 
-  add_new_trajectory_msg(new_traj_msg);
+  // NOTE(rebase): commented out (not deleted) -- add_new_trajectory_msg() now feeds the inherited,
+  // real-joint-space current_trajectory_, but new_traj_msg here is still Cartesian-shaped
+  // (params_.kinematics.cartesian_axes labels/size). Calling this now would be actively wrong
+  // (name/size mismatch against params_.joints), not just unused. Pending next step: feed
+  // new_traj_msg into a separate, dedicated Cartesian Trajectory instance instead.
+  // add_new_trajectory_msg(new_traj_msg);
 }
 
-controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
-  const rclcpp_lifecycle::State &)
-{
-  // order all joints in the storage
-  // NOTE(rebase): command_interface_types_ was superseded by params_.command_interfaces when
-  // jazzy migrated parameter declarations to the generate_parameter_library params_ struct.
-  for (const auto & interface : params_.command_interfaces)
-  {
-    auto it =
-      std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), interface);
-    auto index = std::distance(allowed_interface_types_.begin(), it);
-    if (!controller_interface::get_ordered_interfaces(
-          command_interfaces_, command_joint_names_, interface, joint_command_interface_[index]))
-    {
-      RCLCPP_ERROR(
-        get_node()->get_logger(), "Expected %zu '%s' command interfaces, got %zu.", dof_,
-        interface.c_str(), joint_command_interface_[index].size());
-      return controller_interface::CallbackReturn::ERROR;
-    }
-  }
-  // NOTE(rebase): no state-interface ordering here (this was already commented out in the
-  // original commit) -- state_interface_configuration() returns NONE for this controller;
-  // Cartesian state comes from the tf2/Odometry feedback subscriber instead, via
-  // read_state_from_state_interfaces() below.
+// NOTE(rebase): commented out (not deleted) -- params_.joints is now the real robot joint list,
+// so this override is no longer needed; the inherited on_activate() already does everything here
+// (interface ordering, current_trajectory_ setup, hold-position bootstrap) correctly for real
+// joints. Kept here for review before the next step.
+// controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
+//   const rclcpp_lifecycle::State &)
+// {
+//   // order all joints in the storage
+//   // NOTE(rebase): command_interface_types_ was superseded by params_.command_interfaces when
+//   // jazzy migrated parameter declarations to the generate_parameter_library params_ struct.
+//   for (const auto & interface : params_.command_interfaces)
+//   {
+//     auto it =
+//       std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), interface);
+//     auto index = std::distance(allowed_interface_types_.begin(), it);
+//     if (!controller_interface::get_ordered_interfaces(
+//           command_interfaces_, command_joint_names_, interface, joint_command_interface_[index]))
+//     {
+//       RCLCPP_ERROR(
+//         get_node()->get_logger(), "Expected %zu '%s' command interfaces, got %zu.", dof_,
+//         interface.c_str(), joint_command_interface_[index].size());
+//       return controller_interface::CallbackReturn::ERROR;
+//     }
+//   }
+//   // NOTE(rebase): no state-interface ordering here (this was already commented out in the
+//   // original commit) -- state_interface_configuration() returns NONE for this controller;
+//   // Cartesian state comes from the tf2/Odometry feedback subscriber instead, via
+//   // read_state_from_state_interfaces() below.
+// 
+//   // NOTE(rebase): dropped the original "Store 'home' pose" block (traj_msg_home_ptr_,
+//   // traj_home_point_ptr_) -- jazzy removed the whole go-home concept independently of this
+//   // branch (see commits 1-14 of this rebase); nothing in the current update()/on_deactivate()
+//   // pipeline ever triggers a return-to-home anymore, so it was dead weight even before the
+//   // rename below. Replaced traj_external_point_ptr_/traj_point_active_ptr_/
+//   // traj_msg_external_point_ptr_ with jazzy's collapsed current_trajectory_/new_trajectory_msg_
+//   // (mirrors JointTrajectoryController::on_activate() exactly). Also dropped
+//   // last_state_publish_time_, which is unused dead vestigial state (see commit 14 of this
+//   // rebase for the same fix in the base class).
+//   current_trajectory_ = std::make_shared<joint_trajectory_controller::Trajectory>();
+//   new_trajectory_msg_.writeFromNonRT(std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
+// 
+//   subscriber_is_active_ = true;
+// 
+//   // Initialize current state storage if hardware state has tracking offset
+//   read_state_from_state_interfaces(state_current_);
+//   read_state_from_state_interfaces(state_desired_);
+//   read_state_from_state_interfaces(last_commanded_state_);
+//   // Handle restart of controller by reading from commands if
+//   // those are not nan
+//   trajectory_msgs::msg::JointTrajectoryPoint state;
+//   resize_joint_trajectory_point(state, dof_);
+//   if (read_state_from_command_interfaces(state))
+//   {
+//     state_current_ = state;
+//     state_desired_ = state;
+//     last_commanded_state_ = state;
+//   }
+// 
+//   // NOTE(rebase): added to match JointTrajectoryController::on_activate()'s current behavior.
+//   // Without this, current_trajectory_ has no trajectory message and has_active_trajectory()
+//   // stays false until the first ~/reference message arrives, so update() writes nothing to the
+//   // command interfaces in the meantime. For position command interfaces that's harmless (the
+//   // hardware just holds its last position), but for velocity/effort command interfaces it would
+//   // leave them uncommanded (driver-dependent fallback, often but not guaranteed to be zero) from
+//   // activation until the first Cartesian reference. Holding at the current position immediately
+//   // is the safer default and is what the rest of the codebase now assumes.
+//   add_new_trajectory_msg(set_hold_position());
+//   rt_is_holding_ = true;
+// 
+//   return CallbackReturn::SUCCESS;
+// }
 
-  // NOTE(rebase): dropped the original "Store 'home' pose" block (traj_msg_home_ptr_,
-  // traj_home_point_ptr_) -- jazzy removed the whole go-home concept independently of this
-  // branch (see commits 1-14 of this rebase); nothing in the current update()/on_deactivate()
-  // pipeline ever triggers a return-to-home anymore, so it was dead weight even before the
-  // rename below. Replaced traj_external_point_ptr_/traj_point_active_ptr_/
-  // traj_msg_external_point_ptr_ with jazzy's collapsed current_trajectory_/new_trajectory_msg_
-  // (mirrors JointTrajectoryController::on_activate() exactly). Also dropped
-  // last_state_publish_time_, which is unused dead vestigial state (see commit 14 of this
-  // rebase for the same fix in the base class).
-  current_trajectory_ = std::make_shared<joint_trajectory_controller::Trajectory>();
-  new_trajectory_msg_.writeFromNonRT(std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
-
-  subscriber_is_active_ = true;
-
-  // Initialize current state storage if hardware state has tracking offset
-  read_state_from_state_interfaces(state_current_);
-  read_state_from_state_interfaces(state_desired_);
-  read_state_from_state_interfaces(last_commanded_state_);
-  // Handle restart of controller by reading from commands if
-  // those are not nan
-  trajectory_msgs::msg::JointTrajectoryPoint state;
-  resize_joint_trajectory_point(state, dof_);
-  if (read_state_from_command_interfaces(state))
-  {
-    state_current_ = state;
-    state_desired_ = state;
-    last_commanded_state_ = state;
-  }
-
-  // NOTE(rebase): added to match JointTrajectoryController::on_activate()'s current behavior.
-  // Without this, current_trajectory_ has no trajectory message and has_active_trajectory()
-  // stays false until the first ~/reference message arrives, so update() writes nothing to the
-  // command interfaces in the meantime. For position command interfaces that's harmless (the
-  // hardware just holds its last position), but for velocity/effort command interfaces it would
-  // leave them uncommanded (driver-dependent fallback, often but not guaranteed to be zero) from
-  // activation until the first Cartesian reference. Holding at the current position immediately
-  // is the safer default and is what the rest of the codebase now assumes.
-  add_new_trajectory_msg(set_hold_position());
-  rt_is_holding_ = true;
-
-  return CallbackReturn::SUCCESS;
-}
-
-void CartesianTrajectoryGenerator::read_state_from_state_interfaces(JointTrajectoryPoint & state)
-{
-  std::array<double, 3> orientation_angles;
-  const auto measured_state = *(feedback_.readFromRT());
-  tf2::Quaternion measured_q;
-  tf2::fromMsg(measured_state->pose.pose.orientation, measured_q);
-  tf2::Matrix3x3 m(measured_q);
-  m.getRPY(orientation_angles[0], orientation_angles[1], orientation_angles[2]);
-
-  // Assign values from the hardware
-  // Position states always exist
-  state.positions[0] = measured_state->pose.pose.position.x;
-  state.positions[1] = measured_state->pose.pose.position.y;
-  state.positions[2] = measured_state->pose.pose.position.z;
-  state.positions[3] = orientation_angles[0];
-  state.positions[4] = orientation_angles[1];
-  state.positions[5] = orientation_angles[2];
-
-  state.velocities[0] = measured_state->twist.twist.linear.x;
-  state.velocities[1] = measured_state->twist.twist.linear.y;
-  state.velocities[2] = measured_state->twist.twist.linear.z;
-  state.velocities[3] = measured_state->twist.twist.angular.x;
-  state.velocities[4] = measured_state->twist.twist.angular.y;
-  state.velocities[5] = measured_state->twist.twist.angular.z;
-
-  state.accelerations.clear();
-}
+// void CartesianTrajectoryGenerator::read_state_from_state_interfaces(JointTrajectoryPoint & state)
+// {
+//   std::array<double, 3> orientation_angles;
+//   const auto measured_state = *(feedback_.readFromRT());
+//   tf2::Quaternion measured_q;
+//   tf2::fromMsg(measured_state->pose.pose.orientation, measured_q);
+//   tf2::Matrix3x3 m(measured_q);
+//   m.getRPY(orientation_angles[0], orientation_angles[1], orientation_angles[2]);
+// 
+//   // Assign values from the hardware
+//   // Position states always exist
+//   state.positions[0] = measured_state->pose.pose.position.x;
+//   state.positions[1] = measured_state->pose.pose.position.y;
+//   state.positions[2] = measured_state->pose.pose.position.z;
+//   state.positions[3] = orientation_angles[0];
+//   state.positions[4] = orientation_angles[1];
+//   state.positions[5] = orientation_angles[2];
+// 
+//   state.velocities[0] = measured_state->twist.twist.linear.x;
+//   state.velocities[1] = measured_state->twist.twist.linear.y;
+//   state.velocities[2] = measured_state->twist.twist.linear.z;
+//   state.velocities[3] = measured_state->twist.twist.angular.x;
+//   state.velocities[4] = measured_state->twist.twist.angular.y;
+//   state.velocities[5] = measured_state->twist.twist.angular.z;
+// 
+//   state.accelerations.clear();
+// }
 
 }  // namespace cartesian_trajectory_generator
 

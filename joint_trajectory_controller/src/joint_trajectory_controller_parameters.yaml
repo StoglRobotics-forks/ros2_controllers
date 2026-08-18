@@ -282,3 +282,16 @@ joint_trajectory_controller:
       default_value: 0.01,
       description: "Specifies the damping coefficient for the Jacobian pseudo inverse."
     }
+    cartesian_axes: {
+      type: string_array,
+      default_value: [],
+      description: "Labels for the 6 Cartesian degrees of freedom (e.g. x, y, z, rx, ry, rz) that
+        CartesianTrajectoryGenerator samples and smooths a Cartesian-space trajectory over, kept
+        separate from `joints` (the real robot joint names used for state/command interfaces and
+        the IK Jacobian). Only used by controllers that generate Cartesian trajectories; leave
+        empty otherwise.",
+      read_only: true,
+      validation: {
+        unique<>: null,
+      }
+    }

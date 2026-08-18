@@ -29,28 +29,32 @@ using namespace std::chrono_literals;  // NOLINT
 
 namespace cartesian_trajectory_generator
 {
+// NOTE(rebase): params_.joints is now the real robot joint list (not Cartesian axis labels) --
+// state_interface_configuration()/read_state_from_state_interfaces()/on_activate() are therefore
+// fully inherited unchanged: they claim and read real joint state exactly like a normal
+// JointTrajectoryController, which is what the kinematics_ Jacobian needs. The Cartesian axes this
+// generator actually smooths a trajectory over are configured separately, via
+// params_.kinematics.cartesian_axes, and tracked by their own Trajectory instance (not the
+// inherited current_trajectory_, which stays real-joint-space). The three overrides below are
+// commented out (not deleted) rather than removed outright, kept for review before the next step.
 class CartesianTrajectoryGenerator : public joint_trajectory_controller::JointTrajectoryController
 {
 public:
   CartesianTrajectoryGenerator();
 
-  /**
-   * @brief command_interface_configuration This controller requires the position and velocity
-   * state interfaces for the controlled joints
-   */
-  controller_interface::InterfaceConfiguration state_interface_configuration() const override;
+  // controller_interface::InterfaceConfiguration state_interface_configuration() const override;
 
   controller_interface::CallbackReturn on_configure(
     const rclcpp_lifecycle::State & previous_state) override;
 
-  controller_interface::CallbackReturn on_activate(
-    const rclcpp_lifecycle::State & previous_state) override;
+  // controller_interface::CallbackReturn on_activate(
+  //   const rclcpp_lifecycle::State & previous_state) override;
 
   using ControllerReferenceMsg = trajectory_msgs::msg::MultiDOFJointTrajectoryPoint;
   using ControllerFeedbackMsg = nav_msgs::msg::Odometry;
 
 protected:
-  void read_state_from_state_interfaces(JointTrajectoryPoint & state) override;
+  // void read_state_from_state_interfaces(JointTrajectoryPoint & state) override;
 
   // Command subscribers and Controller State publisher
   rclcpp::Subscription<ControllerReferenceMsg>::SharedPtr ref_subscriber_ = nullptr;
