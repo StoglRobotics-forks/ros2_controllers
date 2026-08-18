@@ -17,9 +17,9 @@
 #include "tf2/transform_datatypes.h"
 
 #include "controller_interface/helpers.hpp"
+#include "joint_limits/joint_limits_rosparam.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
-
 
 namespace
 {  // utility
@@ -106,16 +106,33 @@ CartesianTrajectoryGenerator::CartesianTrajectoryGenerator()
 controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
   const rclcpp_lifecycle::State & previous_state)
 {
+  // kinematics is mandatory for IK conversion, fail if no param is declared.
+  if (params_.kinematics.plugin_name.empty())
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "kinematics parameters are empty. Please declare valid parameters in the controllers YAML!");
+    return CallbackReturn::FAILURE;
+  }
+
+  // Call the base class on_configure
   auto ret = joint_trajectory_controller::JointTrajectoryController::on_configure(previous_state);
   if (ret != CallbackReturn::SUCCESS)
   {
     return ret;
   }
 
-  // NOTE(rebase): keyed by params_.kinematics.cartesian_axes, not command_joint_names_ --
-  // command_joint_names_ is now the real robot joint list, but use_position_input_ tracks
-  // per-Cartesian-axis mode (position-hold vs velocity-streaming), so it needs the Cartesian axis
-  // labels instead.
+  // This controller only supports writing position commands for now
+  if (!has_position_command_interface_)
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "CartesianTrajectoryGenerator requires 'position' in command_interfaces. IK-converted "
+      "targets are only ever written as position commands.");
+    return CallbackReturn::FAILURE;
+  }
+
+  // Check if the cartesian axes parameter is correctly populated
   if (params_.kinematics.cartesian_axes.size() != 6)
   {
     RCLCPP_ERROR(
@@ -125,11 +142,50 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
       params_.kinematics.cartesian_axes.size());
     return CallbackReturn::FAILURE;
   }
+
   // set all position per default to not use positions
   for (const auto & axis_name : params_.kinematics.cartesian_axes)
   {
     use_position_input_[axis_name] = realtime_tools::RealtimeBuffer(false);
   }
+
+  // Load the cartesian joints limits of type JointLimits. We only use this structure even in
+  // cartesian space as it contains the necessary information for Trajectory sample/update methods
+  // and matches their signature.
+  // FLAG: we can maybe  use a custom message later on? Need to check in the future version of the
+  // code first.
+  cartesian_joint_limits_.resize(params_.kinematics.cartesian_axes.size());
+  for (size_t i = 0; i < cartesian_joint_limits_.size(); ++i)
+  {
+    const auto & axis_name = params_.kinematics.cartesian_axes[i];
+    if (joint_limits::declare_parameters(axis_name, get_node()))
+    {
+      joint_limits::get_joint_limits(axis_name, get_node(), cartesian_joint_limits_[i]);
+      RCLCPP_INFO(
+        get_node()->get_logger(), "Limits for Cartesian axis %zu (%s) are: \n%s", i,
+        axis_name.c_str(), cartesian_joint_limits_[i].to_string().c_str());
+    }
+  }
+
+  // Instantiate the cartesian trajectory object
+  current_cartesian_trajectory_ = std::make_shared<joint_trajectory_controller::Trajectory>();
+
+  // Size the dedicated real-joint-space state
+  resize_joint_trajectory_point(joint_state_current_, dof_);
+  resize_joint_trajectory_point(joint_state_desired_, dof_);
+
+  // resize to the number of cartesian axes
+  cartesian_state_current_.positions.resize(params_.kinematics.cartesian_axes.size());
+  cartesian_state_current_.velocities.resize(params_.kinematics.cartesian_axes.size());
+
+  // this message will be lock-free
+  // FLAG: the base class seeds new_trajectory_msg_ in on_activate(), not on_configure()
+  // seeding new_cartesian_trajectory_msg_ here instead means it won't get reset on a
+  // deactivate->reactivate cycle that doesn't go through a full reconfigure. This is another facet
+  // of the already-deferred reactivation-staleness gap for current_cartesian_trajectory_ itself ;
+  // fix both together in that later pass rather than separately.
+  new_cartesian_trajectory_msg_.writeFromNonRT(
+    std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
 
   // topics QoS
   auto subscribers_qos = rclcpp::SystemDefaultsQoS();
@@ -167,7 +223,7 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
   // feeding the existing Ruckig-smoothed JTC pipeline), so both were dropped here rather than
   // reinventing custom .srv types. Impact: axes can only be velocity-streamed, never explicitly
   // released back to position-hold via service (see the note on use_position_input_ in the
-  // header); and joint_limits_ can only be set at on_configure() time, not retuned live.
+  // header); and cartesian_joint_limits_ can only be set at on_configure() time, not retuned live.
 
   return CallbackReturn::SUCCESS;
 }
@@ -183,16 +239,7 @@ void CartesianTrajectoryGenerator::reference_callback(
   // it can no longer be reused to get the current Cartesian pose. This is the same tf2 quaternion
   // -> RPY conversion the old (now commented-out) override did, just moved here since it's now
   // specific to this Cartesian-feedback-parsing use, not a general state read.
-  trajectory_msgs::msg::JointTrajectoryPoint cartesian_state;
-  cartesian_state.positions.resize(6);
-  const auto measured_state = *(feedback_.readFromRT());
-  tf2::Quaternion measured_q;
-  tf2::fromMsg(measured_state->pose.pose.orientation, measured_q);
-  tf2::Matrix3x3 m(measured_q);
-  m.getRPY(cartesian_state.positions[3], cartesian_state.positions[4], cartesian_state.positions[5]);
-  cartesian_state.positions[0] = measured_state->pose.pose.position.x;
-  cartesian_state.positions[1] = measured_state->pose.pose.position.y;
-  cartesian_state.positions[2] = measured_state->pose.pose.position.z;
+  read_cartesian_state_from_feedback(cartesian_state_current_, *(feedback_.readFromNonRT()));
 
   // assume for now that we are working with trajectories with one point - we don't know exactly
   // where we are in the trajectory before sampling - nevertheless this should work for the use case
@@ -210,7 +257,8 @@ void CartesianTrajectoryGenerator::reference_callback(
   auto assign_value_depending_on_input = [&](
                                            const double pos_from_msg, const double vel_from_msg,
                                            const std::string & joint_name, const size_t index,
-                                           const double pos_feedback) {
+                                           const double pos_feedback)
+  {
     if (!std::isnan(vel_from_msg))
     {
       if (*(use_position_input_[joint_name].readFromNonRT()))
@@ -243,30 +291,26 @@ void CartesianTrajectoryGenerator::reference_callback(
   };
 
   assign_value_depending_on_input(
-    msg->transforms[0].translation.x, msg->velocities[0].linear.x, params_.kinematics.cartesian_axes[0], 0,
-    cartesian_state.positions[0]);
+    msg->transforms[0].translation.x, msg->velocities[0].linear.x,
+    params_.kinematics.cartesian_axes[0], 0, cartesian_state_current_.positions[0]);
   assign_value_depending_on_input(
-    msg->transforms[0].translation.y, msg->velocities[0].linear.y, params_.kinematics.cartesian_axes[1], 1,
-    cartesian_state.positions[1]);
+    msg->transforms[0].translation.y, msg->velocities[0].linear.y,
+    params_.kinematics.cartesian_axes[1], 1, cartesian_state_current_.positions[1]);
   assign_value_depending_on_input(
-    msg->transforms[0].translation.z, msg->velocities[0].linear.z, params_.kinematics.cartesian_axes[2], 2,
-    cartesian_state.positions[2]);
+    msg->transforms[0].translation.z, msg->velocities[0].linear.z,
+    params_.kinematics.cartesian_axes[2], 2, cartesian_state_current_.positions[2]);
   assign_value_depending_on_input(
-    msg->transforms[0].rotation.x, msg->velocities[0].angular.x, params_.kinematics.cartesian_axes[3], 3,
-    cartesian_state.positions[3]);
+    msg->transforms[0].rotation.x, msg->velocities[0].angular.x,
+    params_.kinematics.cartesian_axes[3], 3, cartesian_state_current_.positions[3]);
   assign_value_depending_on_input(
-    msg->transforms[0].rotation.y, msg->velocities[0].angular.y, params_.kinematics.cartesian_axes[4], 4,
-    cartesian_state.positions[4]);
+    msg->transforms[0].rotation.y, msg->velocities[0].angular.y,
+    params_.kinematics.cartesian_axes[4], 4, cartesian_state_current_.positions[4]);
   assign_value_depending_on_input(
-    msg->transforms[0].rotation.z, msg->velocities[0].angular.z, params_.kinematics.cartesian_axes[5], 5,
-    cartesian_state.positions[5]);
+    msg->transforms[0].rotation.z, msg->velocities[0].angular.z,
+    params_.kinematics.cartesian_axes[5], 5, cartesian_state_current_.positions[5]);
 
-  // NOTE(rebase): commented out (not deleted) -- add_new_trajectory_msg() now feeds the inherited,
-  // real-joint-space current_trajectory_, but new_traj_msg here is still Cartesian-shaped
-  // (params_.kinematics.cartesian_axes labels/size). Calling this now would be actively wrong
-  // (name/size mismatch against params_.joints), not just unused. Pending next step: feed
-  // new_traj_msg into a separate, dedicated Cartesian Trajectory instance instead.
-  // add_new_trajectory_msg(new_traj_msg);
+  // Store the new trajectory message for later use
+  new_cartesian_trajectory_msg_.writeFromNonRT(new_traj_msg);
 }
 
 // NOTE(rebase): commented out (not deleted) -- params_.joints is now the real robot joint list,
@@ -297,7 +341,7 @@ void CartesianTrajectoryGenerator::reference_callback(
 //   // original commit) -- state_interface_configuration() returns NONE for this controller;
 //   // Cartesian state comes from the tf2/Odometry feedback subscriber instead, via
 //   // read_state_from_state_interfaces() below.
-// 
+//
 //   // NOTE(rebase): dropped the original "Store 'home' pose" block (traj_msg_home_ptr_,
 //   // traj_home_point_ptr_) -- jazzy removed the whole go-home concept independently of this
 //   // branch (see commits 1-14 of this rebase); nothing in the current update()/on_deactivate()
@@ -309,9 +353,9 @@ void CartesianTrajectoryGenerator::reference_callback(
 //   // rebase for the same fix in the base class).
 //   current_trajectory_ = std::make_shared<joint_trajectory_controller::Trajectory>();
 //   new_trajectory_msg_.writeFromNonRT(std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
-// 
+//
 //   subscriber_is_active_ = true;
-// 
+//
 //   // Initialize current state storage if hardware state has tracking offset
 //   read_state_from_state_interfaces(state_current_);
 //   read_state_from_state_interfaces(state_desired_);
@@ -326,7 +370,7 @@ void CartesianTrajectoryGenerator::reference_callback(
 //     state_desired_ = state;
 //     last_commanded_state_ = state;
 //   }
-// 
+//
 //   // NOTE(rebase): added to match JointTrajectoryController::on_activate()'s current behavior.
 //   // Without this, current_trajectory_ has no trajectory message and has_active_trajectory()
 //   // stays false until the first ~/reference message arrives, so update() writes nothing to the
@@ -337,37 +381,124 @@ void CartesianTrajectoryGenerator::reference_callback(
 //   // is the safer default and is what the rest of the codebase now assumes.
 //   add_new_trajectory_msg(set_hold_position());
 //   rt_is_holding_ = true;
-// 
+//
 //   return CallbackReturn::SUCCESS;
 // }
 
-// void CartesianTrajectoryGenerator::read_state_from_state_interfaces(JointTrajectoryPoint & state)
-// {
-//   std::array<double, 3> orientation_angles;
-//   const auto measured_state = *(feedback_.readFromRT());
-//   tf2::Quaternion measured_q;
-//   tf2::fromMsg(measured_state->pose.pose.orientation, measured_q);
-//   tf2::Matrix3x3 m(measured_q);
-//   m.getRPY(orientation_angles[0], orientation_angles[1], orientation_angles[2]);
-// 
-//   // Assign values from the hardware
-//   // Position states always exist
-//   state.positions[0] = measured_state->pose.pose.position.x;
-//   state.positions[1] = measured_state->pose.pose.position.y;
-//   state.positions[2] = measured_state->pose.pose.position.z;
-//   state.positions[3] = orientation_angles[0];
-//   state.positions[4] = orientation_angles[1];
-//   state.positions[5] = orientation_angles[2];
-// 
-//   state.velocities[0] = measured_state->twist.twist.linear.x;
-//   state.velocities[1] = measured_state->twist.twist.linear.y;
-//   state.velocities[2] = measured_state->twist.twist.linear.z;
-//   state.velocities[3] = measured_state->twist.twist.angular.x;
-//   state.velocities[4] = measured_state->twist.twist.angular.y;
-//   state.velocities[5] = measured_state->twist.twist.angular.z;
-// 
-//   state.accelerations.clear();
-// }
+void CartesianTrajectoryGenerator::read_cartesian_state_from_feedback(
+  JointTrajectoryPoint & cartesian_state,
+  const std::shared_ptr<ControllerFeedbackMsg> & measured_state)
+{
+  std::array<double, 3> orientation_angles;
+  tf2::Quaternion measured_q;
+  tf2::fromMsg(measured_state->pose.pose.orientation, measured_q);
+  tf2::Matrix3x3 m(measured_q);
+  m.getRPY(orientation_angles[0], orientation_angles[1], orientation_angles[2]);
+
+  // Assign values from the hardware
+  // Position states always exist
+  cartesian_state.positions[0] = measured_state->pose.pose.position.x;
+  cartesian_state.positions[1] = measured_state->pose.pose.position.y;
+  cartesian_state.positions[2] = measured_state->pose.pose.position.z;
+  cartesian_state.positions[3] = orientation_angles[0];
+  cartesian_state.positions[4] = orientation_angles[1];
+  cartesian_state.positions[5] = orientation_angles[2];
+
+  cartesian_state.velocities[0] = measured_state->twist.twist.linear.x;
+  cartesian_state.velocities[1] = measured_state->twist.twist.linear.y;
+  cartesian_state.velocities[2] = measured_state->twist.twist.linear.z;
+  cartesian_state.velocities[3] = measured_state->twist.twist.angular.x;
+  cartesian_state.velocities[4] = measured_state->twist.twist.angular.y;
+  cartesian_state.velocities[5] = measured_state->twist.twist.angular.z;
+
+  cartesian_state.accelerations.clear();
+}
+
+controller_interface::return_type CartesianTrajectoryGenerator::update(
+  const rclcpp::Time & time, const rclcpp::Duration & period)
+{
+  // Check if a new trajectory message has been received from Non-RT threads
+  const auto current_cartesian_trajectory_msg = current_cartesian_trajectory_->get_trajectory_msg();
+  auto new_cartesian_external_msg = new_cartesian_trajectory_msg_.readFromRT();
+
+  // Update the current cartesian trajectory with the new message, but only if it actually
+  // changed. Trajectory::update() unconditionally resets the Ruckig smoother state and sampling
+  if (current_cartesian_trajectory_msg != *new_cartesian_external_msg)
+  {
+    current_cartesian_trajectory_->update(
+      *new_cartesian_external_msg, cartesian_joint_limits_, period);
+  }
+
+  // current joints state update (joint space)
+  joint_state_current_.time_from_start.sec = 0;
+  joint_state_current_.time_from_start.nanosec = 0;
+  read_state_from_state_interfaces(joint_state_current_);
+
+  // Current cartesian update from the odometry feedback
+  read_cartesian_state_from_feedback(cartesian_state_current_, *(feedback_.readFromRT()));
+
+  // if sampling the first time, set the point before you sample
+  if (!current_cartesian_trajectory_->is_sampled_already())
+  {
+    current_cartesian_trajectory_->set_point_before_trajectory_msg(
+      time, cartesian_state_current_, {});
+  }
+
+  // Sample expected state from the trajectory
+  joint_trajectory_controller::TrajectoryPointConstIter start_it, end_it;
+  current_cartesian_trajectory_->sample(
+    time, interpolation_method_, cartesian_target_, start_it, end_it, period,
+    cartesian_joint_limits_, cartesian_splines_state_, cartesian_ruckig_state_,
+    cartesian_ruckig_input_state_);
+
+  // Cartesian delta between the smoothed target and the actual current Cartesian pose.
+  // FLAG: no wraparound handling on the rotation axes (rx/ry/rz). This is a pre-existing gap.
+  std::vector<double> delta_x(6);
+  for (size_t i = 0; i < 6; ++i)
+  {
+    delta_x[i] = cartesian_target_.positions[i] - cartesian_state_current_.positions[i];
+  }
+
+  // Convert to a joint-space delta via the kinematics plugin
+  std::vector<double> joint_delta(dof_, 0.0);
+  if (!kinematics_->convert_cartesian_deltas_to_joint_deltas(
+        joint_state_current_.positions, delta_x, params_.kinematics.tip, joint_delta))
+  {
+    RCLCPP_WARN(
+      get_node()->get_logger(),
+      "Failed to convert Cartesian reference to joint deltas via IK this cycle.");
+    return controller_interface::return_type::OK;
+  }
+
+  // Target real joint positions = current real joint positions + the IK-converted delta.
+  std::vector<double> target_real_joint_positions(dof_);
+  for (size_t i = 0; i < dof_; ++i)
+  {
+    target_real_joint_positions[i] = joint_state_current_.positions[i] + joint_delta[i];
+  }
+
+  // Fill joint_state_desired_/state_error_ for accurate publish_state() reporting
+  joint_state_desired_.positions = target_real_joint_positions;
+  for (size_t i = 0; i < dof_; ++i)
+  {
+    compute_error_for_joint(state_error_, i, joint_state_current_, joint_state_desired_);
+  }
+
+  // Write to hardware
+  for (size_t i = 0; i < num_cmd_joints_; ++i)
+  {
+    joint_command_interface_[0][i].get().set_value(
+      target_real_joint_positions[map_cmd_to_joints_[i]]);
+  }
+  last_commanded_state_ = joint_state_desired_;
+  last_commanded_time_ = time;
+
+  publish_state(
+    time, joint_state_desired_, joint_state_current_, state_error_, splines_state_, ruckig_state_,
+    ruckig_input_state_);
+
+  return controller_interface::return_type::OK;
+}
 
 }  // namespace cartesian_trajectory_generator
 

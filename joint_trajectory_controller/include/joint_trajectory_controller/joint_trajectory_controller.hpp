@@ -106,6 +106,11 @@ protected:
   size_t num_cmd_joints_;
   std::vector<size_t> map_cmd_to_joints_;
 
+  // FLAG(review): kinematics_/kinematics_loader_ currently live here on the base class, but the
+  // only consumer is CartesianTrajectoryGenerator -- every plain JointTrajectoryController
+  // instance carries these members and the kinematics.* params unused. Consider moving both the
+  // members and the on_configure() loading logic into CartesianTrajectoryGenerator instead, for
+  // full isolation of the Cartesian/IK feature from the base class. Deferred, not yet done.
   // Kinematics interface plugin loader
   std::shared_ptr<pluginlib::ClassLoader<kinematics_interface::KinematicsInterface>>
     kinematics_loader_;

@@ -586,6 +586,7 @@ controller_interface::return_type JointTrajectoryController::update(
   return controller_interface::return_type::OK;
 }
 
+// FLAG: check if this method is compatible with the real joints now
 void JointTrajectoryController::read_state_from_state_interfaces(JointTrajectoryPoint & state)
 {
   auto logger = get_node()->get_logger();

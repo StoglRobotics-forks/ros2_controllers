@@ -37,6 +37,12 @@ namespace cartesian_trajectory_generator
 // params_.kinematics.cartesian_axes, and tracked by their own Trajectory instance (not the
 // inherited current_trajectory_, which stays real-joint-space). The three overrides below are
 // commented out (not deleted) rather than removed outright, kept for review before the next step.
+//
+// FLAG(review): kinematics_/kinematics_loader_ (used below) are declared on the base
+// JointTrajectoryController, not here, even though this generator is their only real consumer --
+// see the matching FLAG(review) note next to their declaration in joint_trajectory_controller.hpp.
+// Moving them onto this class instead would fully isolate the Cartesian/IK feature from the base
+// class; deferred for now.
 class CartesianTrajectoryGenerator : public joint_trajectory_controller::JointTrajectoryController
 {
 public:
@@ -50,12 +56,13 @@ public:
   // controller_interface::CallbackReturn on_activate(
   //   const rclcpp_lifecycle::State & previous_state) override;
 
+  controller_interface::return_type update(
+    const rclcpp::Time & time, const rclcpp::Duration & period) override;
+
   using ControllerReferenceMsg = trajectory_msgs::msg::MultiDOFJointTrajectoryPoint;
   using ControllerFeedbackMsg = nav_msgs::msg::Odometry;
 
 protected:
-  // void read_state_from_state_interfaces(JointTrajectoryPoint & state) override;
-
   // Command subscribers and Controller State publisher
   rclcpp::Subscription<ControllerReferenceMsg>::SharedPtr ref_subscriber_ = nullptr;
   realtime_tools::RealtimeBuffer<std::shared_ptr<ControllerReferenceMsg>> input_ref_;
@@ -73,8 +80,37 @@ protected:
   // still reads it and re-adding the service later is the natural way to restore position-hold.
   std::unordered_map<std::string, realtime_tools::RealtimeBuffer<bool>> use_position_input_;
 
+  std::shared_ptr<joint_trajectory_controller::Trajectory> current_cartesian_trajectory_;
+  realtime_tools::RealtimeBuffer<std::shared_ptr<trajectory_msgs::msg::JointTrajectory>>
+    new_cartesian_trajectory_msg_;
+  std::vector<joint_limits::JointLimits> cartesian_joint_limits_;
+
+  // Dedicated Cartesian-space debug/working points (NOT the inherited splines_state_/
+  // ruckig_state_/ruckig_input_state_, which are real-joint-space elsewhere in the base class —
+  // reusing them here would be a confusing naming collision even though it'd technically compile).
+
+  // FLAG: Remove the smoothing logic from the JTC later
+  trajectory_msgs::msg::JointTrajectoryPoint cartesian_state_current_;
+  trajectory_msgs::msg::JointTrajectoryPoint cartesian_target_;
+  trajectory_msgs::msg::JointTrajectoryPoint cartesian_splines_state_;
+  trajectory_msgs::msg::JointTrajectoryPoint cartesian_ruckig_state_;
+  trajectory_msgs::msg::JointTrajectoryPoint cartesian_ruckig_input_state_;
+
+  // NOTE(rebase): dedicated real-joint-space state, separate from the inherited state_current_/
+  // state_desired_, purely for naming clarity between Cartesian- and joint-space quantities
+  trajectory_msgs::msg::JointTrajectoryPoint joint_state_current_;
+  trajectory_msgs::msg::JointTrajectoryPoint joint_state_desired_;
+
 private:
   void reference_callback(const std::shared_ptr<ControllerReferenceMsg> msg);
+
+  // updates the cartesian state with the values received from the feedback. Takes the already-
+  // read feedback message rather than reading feedback_ itself, so the caller can pick the read
+  // that matches its own thread context (readFromRT() from update(), readFromNonRT() from
+  // reference_callback()) -- feedback_ is a RealtimeBuffer with a single-RT-reader contract.
+  void read_cartesian_state_from_feedback(
+    JointTrajectoryPoint & cartesian_state,
+    const std::shared_ptr<ControllerFeedbackMsg> & measured_state);
 };
 
 }  // namespace cartesian_trajectory_generator
