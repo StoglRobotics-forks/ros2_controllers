@@ -178,12 +178,10 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
   cartesian_state_current_.positions.resize(params_.kinematics.cartesian_axes.size());
   cartesian_state_current_.velocities.resize(params_.kinematics.cartesian_axes.size());
 
-  // this message will be lock-free
-  // FLAG: the base class seeds new_trajectory_msg_ in on_activate(), not on_configure()
-  // seeding new_cartesian_trajectory_msg_ here instead means it won't get reset on a
-  // deactivate->reactivate cycle that doesn't go through a full reconfigure. This is another facet
-  // of the already-deferred reactivation-staleness gap for current_cartesian_trajectory_ itself ;
-  // fix both together in that later pass rather than separately.
+  // this message will be lock-free. Seeded here so the buffer is never left holding a
+  // default-constructed shared_ptr before the first activation; on_activate() re-seeds it again
+  // on every activation (see on_activate() below) so a deactivate->reactivate cycle doesn't leave
+  // a stale buffered message from before deactivation.
   new_cartesian_trajectory_msg_.writeFromNonRT(
     std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
 
@@ -234,11 +232,7 @@ void CartesianTrajectoryGenerator::reference_callback(
   // store input ref for later use
   input_ref_.writeFromNonRT(msg);
 
-  // NOTE(rebase): inlined here instead of going through read_state_from_state_interfaces() --
-  // that method is now the inherited, real-joint-space one (see on_configure()'s NOTE above), so
-  // it can no longer be reused to get the current Cartesian pose. This is the same tf2 quaternion
-  // -> RPY conversion the old (now commented-out) override did, just moved here since it's now
-  // specific to this Cartesian-feedback-parsing use, not a general state read.
+  // populate the current cartesian state with values from feedback
   read_cartesian_state_from_feedback(cartesian_state_current_, *(feedback_.readFromNonRT()));
 
   // assume for now that we are working with trajectories with one point - we don't know exactly
@@ -313,10 +307,13 @@ void CartesianTrajectoryGenerator::reference_callback(
   new_cartesian_trajectory_msg_.writeFromNonRT(new_traj_msg);
 }
 
-// NOTE(rebase): commented out (not deleted) -- params_.joints is now the real robot joint list,
-// so this override is no longer needed; the inherited on_activate() already does everything here
-// (interface ordering, current_trajectory_ setup, hold-position bootstrap) correctly for real
-// joints. Kept here for review before the next step.
+// NOTE(rebase): commented out (not deleted) -- params_.joints is now the real robot joint list, so
+// everything this old override did by hand (interface ordering, current_trajectory_ setup,
+// hold-position bootstrap) is now handled correctly for real joints by the inherited on_activate(),
+// called first in the real on_activate() override below. That override still exists -- it's not
+// dead -- but only to additionally (re)seed current_cartesian_trajectory_/
+// new_cartesian_trajectory_msg_, which the inherited version knows nothing about. Kept here for
+// historical reference against the old design rather than deleted outright.
 // controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
 //   const rclcpp_lifecycle::State &)
 // {
@@ -385,6 +382,31 @@ void CartesianTrajectoryGenerator::reference_callback(
 //   return CallbackReturn::SUCCESS;
 // }
 
+controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
+  const rclcpp_lifecycle::State & previous_state)
+{
+  auto ret = joint_trajectory_controller::JointTrajectoryController::on_activate(previous_state);
+  if (ret != CallbackReturn::SUCCESS)
+  {
+    return ret;
+  }
+
+  current_cartesian_trajectory_ = std::make_shared<joint_trajectory_controller::Trajectory>();
+
+  // Store the current state as new trajectory message, so the first update() cycle will hold the
+  // same pose as the current one
+  read_cartesian_state_from_feedback(cartesian_state_current_, *(feedback_.readFromNonRT()));
+  auto hold_traj_msg = std::make_shared<trajectory_msgs::msg::JointTrajectory>();
+  hold_traj_msg->joint_names = params_.kinematics.cartesian_axes;
+  hold_traj_msg->points.resize(1);
+  hold_traj_msg->points[0].positions = cartesian_state_current_.positions;
+  hold_traj_msg->points[0].velocities.assign(params_.kinematics.cartesian_axes.size(), 0.0);
+  hold_traj_msg->points[0].time_from_start = rclcpp::Duration::from_seconds(0.0);
+  new_cartesian_trajectory_msg_.writeFromNonRT(hold_traj_msg);
+
+  return CallbackReturn::SUCCESS;
+}
+
 void CartesianTrajectoryGenerator::read_cartesian_state_from_feedback(
   JointTrajectoryPoint & cartesian_state,
   const std::shared_ptr<ControllerFeedbackMsg> & measured_state)
@@ -437,67 +459,77 @@ controller_interface::return_type CartesianTrajectoryGenerator::update(
   // Current cartesian update from the odometry feedback
   read_cartesian_state_from_feedback(cartesian_state_current_, *(feedback_.readFromRT()));
 
-  // if sampling the first time, set the point before you sample
-  if (!current_cartesian_trajectory_->is_sampled_already())
+  // Guards against empty trajectory messages
+  if (has_active_cartesian_trajectory())
   {
-    current_cartesian_trajectory_->set_point_before_trajectory_msg(
-      time, cartesian_state_current_, {});
+    // if sampling the first time, set the point before you sample
+    if (!current_cartesian_trajectory_->is_sampled_already())
+    {
+      current_cartesian_trajectory_->set_point_before_trajectory_msg(
+        time, cartesian_state_current_, {});
+    }
+
+    // Sample expected state from the trajectory
+    joint_trajectory_controller::TrajectoryPointConstIter start_it, end_it;
+    current_cartesian_trajectory_->sample(
+      time, interpolation_method_, cartesian_target_, start_it, end_it, period,
+      cartesian_joint_limits_, cartesian_splines_state_, cartesian_ruckig_state_,
+      cartesian_ruckig_input_state_);
+
+    // Cartesian delta between the smoothed target and the actual current Cartesian pose.
+    // FLAG: no wraparound handling on the rotation axes (rx/ry/rz). This is a pre-existing gap.
+    std::vector<double> delta_x(6);
+    for (size_t i = 0; i < 6; ++i)
+    {
+      delta_x[i] = cartesian_target_.positions[i] - cartesian_state_current_.positions[i];
+    }
+
+    // Convert to a joint-space delta via the kinematics plugin
+    std::vector<double> joint_delta(dof_, 0.0);
+    if (!kinematics_->convert_cartesian_deltas_to_joint_deltas(
+          joint_state_current_.positions, delta_x, params_.kinematics.tip, joint_delta))
+    {
+      RCLCPP_WARN(
+        get_node()->get_logger(),
+        "Failed to convert Cartesian reference to joint deltas via IK this cycle.");
+      return controller_interface::return_type::OK;
+    }
+
+    // Target real joint positions = current real joint positions + the IK-converted delta.
+    std::vector<double> target_real_joint_positions(dof_);
+    for (size_t i = 0; i < dof_; ++i)
+    {
+      target_real_joint_positions[i] = joint_state_current_.positions[i] + joint_delta[i];
+    }
+
+    // Fill joint_state_desired_/state_error_ for accurate publish_state() reporting
+    joint_state_desired_.positions = target_real_joint_positions;
+    for (size_t i = 0; i < dof_; ++i)
+    {
+      compute_error_for_joint(state_error_, i, joint_state_current_, joint_state_desired_);
+    }
+
+    // Write to hardware
+    for (size_t i = 0; i < num_cmd_joints_; ++i)
+    {
+      joint_command_interface_[0][i].get().set_value(
+        target_real_joint_positions[map_cmd_to_joints_[i]]);
+    }
+    last_commanded_state_ = joint_state_desired_;
+    last_commanded_time_ = time;
+
+    publish_state(
+      time, joint_state_desired_, joint_state_current_, state_error_, splines_state_, ruckig_state_,
+      ruckig_input_state_);
   }
-
-  // Sample expected state from the trajectory
-  joint_trajectory_controller::TrajectoryPointConstIter start_it, end_it;
-  current_cartesian_trajectory_->sample(
-    time, interpolation_method_, cartesian_target_, start_it, end_it, period,
-    cartesian_joint_limits_, cartesian_splines_state_, cartesian_ruckig_state_,
-    cartesian_ruckig_input_state_);
-
-  // Cartesian delta between the smoothed target and the actual current Cartesian pose.
-  // FLAG: no wraparound handling on the rotation axes (rx/ry/rz). This is a pre-existing gap.
-  std::vector<double> delta_x(6);
-  for (size_t i = 0; i < 6; ++i)
-  {
-    delta_x[i] = cartesian_target_.positions[i] - cartesian_state_current_.positions[i];
-  }
-
-  // Convert to a joint-space delta via the kinematics plugin
-  std::vector<double> joint_delta(dof_, 0.0);
-  if (!kinematics_->convert_cartesian_deltas_to_joint_deltas(
-        joint_state_current_.positions, delta_x, params_.kinematics.tip, joint_delta))
-  {
-    RCLCPP_WARN(
-      get_node()->get_logger(),
-      "Failed to convert Cartesian reference to joint deltas via IK this cycle.");
-    return controller_interface::return_type::OK;
-  }
-
-  // Target real joint positions = current real joint positions + the IK-converted delta.
-  std::vector<double> target_real_joint_positions(dof_);
-  for (size_t i = 0; i < dof_; ++i)
-  {
-    target_real_joint_positions[i] = joint_state_current_.positions[i] + joint_delta[i];
-  }
-
-  // Fill joint_state_desired_/state_error_ for accurate publish_state() reporting
-  joint_state_desired_.positions = target_real_joint_positions;
-  for (size_t i = 0; i < dof_; ++i)
-  {
-    compute_error_for_joint(state_error_, i, joint_state_current_, joint_state_desired_);
-  }
-
-  // Write to hardware
-  for (size_t i = 0; i < num_cmd_joints_; ++i)
-  {
-    joint_command_interface_[0][i].get().set_value(
-      target_real_joint_positions[map_cmd_to_joints_[i]]);
-  }
-  last_commanded_state_ = joint_state_desired_;
-  last_commanded_time_ = time;
-
-  publish_state(
-    time, joint_state_desired_, joint_state_current_, state_error_, splines_state_, ruckig_state_,
-    ruckig_input_state_);
 
   return controller_interface::return_type::OK;
+}
+
+bool CartesianTrajectoryGenerator::has_active_cartesian_trajectory() const
+{
+  return current_cartesian_trajectory_ != nullptr &&
+         current_cartesian_trajectory_->has_trajectory_msg();
 }
 
 }  // namespace cartesian_trajectory_generator

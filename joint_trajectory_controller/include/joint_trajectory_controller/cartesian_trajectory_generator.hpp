@@ -29,16 +29,8 @@ using namespace std::chrono_literals;  // NOLINT
 
 namespace cartesian_trajectory_generator
 {
-// NOTE(rebase): params_.joints is now the real robot joint list (not Cartesian axis labels) --
-// state_interface_configuration()/read_state_from_state_interfaces()/on_activate() are therefore
-// fully inherited unchanged: they claim and read real joint state exactly like a normal
-// JointTrajectoryController, which is what the kinematics_ Jacobian needs. The Cartesian axes this
-// generator actually smooths a trajectory over are configured separately, via
-// params_.kinematics.cartesian_axes, and tracked by their own Trajectory instance (not the
-// inherited current_trajectory_, which stays real-joint-space). The three overrides below are
-// commented out (not deleted) rather than removed outright, kept for review before the next step.
-//
-// FLAG(review): kinematics_/kinematics_loader_ (used below) are declared on the base
+
+// FLAG(review): kinematics_/kinematics_loader_ are declared on the base
 // JointTrajectoryController, not here, even though this generator is their only real consumer --
 // see the matching FLAG(review) note next to their declaration in joint_trajectory_controller.hpp.
 // Moving them onto this class instead would fully isolate the Cartesian/IK feature from the base
@@ -53,8 +45,8 @@ public:
   controller_interface::CallbackReturn on_configure(
     const rclcpp_lifecycle::State & previous_state) override;
 
-  // controller_interface::CallbackReturn on_activate(
-  //   const rclcpp_lifecycle::State & previous_state) override;
+  controller_interface::CallbackReturn on_activate(
+    const rclcpp_lifecycle::State & previous_state) override;
 
   controller_interface::return_type update(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
@@ -104,13 +96,12 @@ protected:
 private:
   void reference_callback(const std::shared_ptr<ControllerReferenceMsg> msg);
 
-  // updates the cartesian state with the values received from the feedback. Takes the already-
-  // read feedback message rather than reading feedback_ itself, so the caller can pick the read
-  // that matches its own thread context (readFromRT() from update(), readFromNonRT() from
-  // reference_callback()) -- feedback_ is a RealtimeBuffer with a single-RT-reader contract.
+  // updates the cartesian state with the values received from the feedback
   void read_cartesian_state_from_feedback(
     JointTrajectoryPoint & cartesian_state,
     const std::shared_ptr<ControllerFeedbackMsg> & measured_state);
+
+  bool has_active_cartesian_trajectory() const;
 };
 
 }  // namespace cartesian_trajectory_generator
