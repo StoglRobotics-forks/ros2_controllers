@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "control_msgs/srv/reset_axis.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "trajectory_msgs/msg/multi_dof_joint_trajectory_point.hpp"
 
@@ -53,6 +54,7 @@ public:
 
   using ControllerReferenceMsg = trajectory_msgs::msg::MultiDOFJointTrajectoryPoint;
   using ControllerFeedbackMsg = nav_msgs::msg::Odometry;
+  using ControllerModeSrvType = control_msgs::srv::ResetAxis;
 
 protected:
   // Command subscribers and Controller State publisher
@@ -62,15 +64,14 @@ protected:
   rclcpp::Subscription<ControllerFeedbackMsg>::SharedPtr feedback_subscriber_ = nullptr;
   realtime_tools::RealtimeBuffer<std::shared_ptr<ControllerFeedbackMsg>> feedback_;
 
-  // NOTE(rebase): originally toggled by a `~/reset_axes` service (control_msgs::srv::ResetAxis)
-  // that let a caller switch a named axis from velocity-streaming back to position-hold at the
-  // current feedback pose. That service type doesn't exist in jazzy's control_msgs and was never
-  // upstreamed, so the service was dropped (see on_configure()). Without it, nothing ever sets an
-  // entry of use_position_input_ back to true after on_configure() initializes it to false, so
-  // the position-hold branch in reference_callback() is currently unreachable: only velocity-
-  // streaming input is functional. Kept here (rather than deleted) since reference_callback()
-  // still reads it and re-adding the service later is the natural way to restore position-hold.
+  // NOTE(rebase): control_msgs::srv::ResetAxis didn't exist in jazzy's control_msgs (a custom
+  // message type from a private control_msgs fork, never upstreamed) -- restored here by adding it
+  // to this org's own control_msgs fork instead (already a dependency of this package). The
+  // `~/reset_axes` service, wired up in on_configure(), takes a list of axis names and switches
+  // each to position-hold mode, freezing it at its current feedback pose immediately (matches the
+  // original's behavior).
   std::unordered_map<std::string, realtime_tools::RealtimeBuffer<bool>> use_position_input_;
+  rclcpp::Service<ControllerModeSrvType>::SharedPtr reset_axes_service_;
 
   std::shared_ptr<joint_trajectory_controller::Trajectory> current_cartesian_trajectory_;
   realtime_tools::RealtimeBuffer<std::shared_ptr<trajectory_msgs::msg::JointTrajectory>>

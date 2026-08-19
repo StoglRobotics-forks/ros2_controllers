@@ -208,20 +208,89 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
   reset_controller_feedback_msg(feedback_msg);
   feedback_.writeFromNonRT(feedback_msg);
 
-  // NOTE(rebase): this used to also create two runtime-reconfiguration services:
-  //  - `~/reset_axes` (control_msgs::srv::ResetAxis): let a caller switch a named axis from
-  //    velocity-streaming back to position-hold at the current feedback pose (a "let go and
-  //    freeze in place" control for Cartesian jogging).
-  //  - `~/set_joint_limits` (control_msgs::srv::SetDOFLimits): let a caller retune the per-axis
-  //    position/velocity/acceleration/jerk/effort limits feeding the Ruckig smoothing at runtime,
-  //    without a controller reconfigure.
-  // Both service types were custom additions to a private control_msgs fork from 2022 that were
-  // never upstreamed and don't exist in jazzy's control_msgs. Neither service is required for the
-  // core feature (reference subscription -> position/velocity blending -> trajectory generation
-  // feeding the existing Ruckig-smoothed JTC pipeline), so both were dropped here rather than
-  // reinventing custom .srv types. Impact: axes can only be velocity-streamed, never explicitly
-  // released back to position-hold via service (see the note on use_position_input_ in the
-  // header); and cartesian_joint_limits_ can only be set at on_configure() time, not retuned live.
+  // NOTE(rebase): the original `~/reset_axes` service (control_msgs::srv::ResetAxis) lived in a
+  // private control_msgs fork, never upstreamed, so it didn't exist in jazzy's control_msgs.
+  // Restored by adding ResetAxis to this org's own control_msgs fork instead (already a dependency
+  // of this package) -- same request/response shape as the original: a list of axis names,
+  // switched to position-hold mode and immediately frozen at their current feedback pose.
+  //
+  // NOTE(rebase): the original's second service, `~/set_joint_limits`
+  // (control_msgs::srv::SetDOFLimits, retuning per-axis Ruckig limits live without a reconfigure),
+  // stays dropped -- also a private-fork-only message type, and not required for the core feature.
+  // Impact: cartesian_joint_limits_ can only be set at on_configure() time, not retuned live.
+
+  // service QoS
+  auto services_qos = rclcpp::SystemDefaultsQoS();  // message queue depth
+  services_qos.keep_all();
+  services_qos.reliable();
+  services_qos.durability_volatile();
+
+  // Control mode service
+  auto reset_axes_service_callback =
+    [&](
+      const std::shared_ptr<ControllerModeSrvType::Request> request,
+      std::shared_ptr<ControllerModeSrvType::Response> response)
+  {
+    response->ok = true;
+    for (size_t i = 0; i < request->names.size(); ++i)
+    {
+      auto it = std::find(
+        params_.kinematics.cartesian_axes.begin(), params_.kinematics.cartesian_axes.end(),
+        request->names[i]);
+      if (it != params_.kinematics.cartesian_axes.end())
+      {
+        use_position_input_[request->names[i]].writeFromNonRT(true);
+        RCLCPP_INFO(
+          get_node()->get_logger(), "Enabling position mode on dof '%s'.",
+          request->names[i].c_str());
+        // TODO(destogl): use RealtimeBox or similar with readFromNonRT
+        // reset data in the last reference to read values from feedback
+        auto current_ref = std::make_shared<ControllerReferenceMsg>(**(input_ref_.readFromNonRT()));
+        auto cmd_itf_index = std::distance(params_.kinematics.cartesian_axes.begin(), it);
+        if (cmd_itf_index == 0)
+        {
+          current_ref->transforms[0].translation.x = std::numeric_limits<double>::quiet_NaN();
+          current_ref->velocities[0].linear.x = std::numeric_limits<double>::quiet_NaN();
+        }
+        if (cmd_itf_index == 1)
+        {
+          current_ref->transforms[0].translation.y = std::numeric_limits<double>::quiet_NaN();
+          current_ref->velocities[0].linear.y = std::numeric_limits<double>::quiet_NaN();
+        }
+        if (cmd_itf_index == 2)
+        {
+          current_ref->transforms[0].translation.z = std::numeric_limits<double>::quiet_NaN();
+          current_ref->velocities[0].linear.z = std::numeric_limits<double>::quiet_NaN();
+        }
+        if (cmd_itf_index == 3)
+        {
+          current_ref->transforms[0].rotation.x = std::numeric_limits<double>::quiet_NaN();
+          current_ref->velocities[0].angular.x = std::numeric_limits<double>::quiet_NaN();
+        }
+        if (cmd_itf_index == 4)
+        {
+          current_ref->transforms[0].rotation.y = std::numeric_limits<double>::quiet_NaN();
+          current_ref->velocities[0].angular.y = std::numeric_limits<double>::quiet_NaN();
+        }
+        if (cmd_itf_index == 5)
+        {
+          current_ref->transforms[0].rotation.z = std::numeric_limits<double>::quiet_NaN();
+          current_ref->velocities[0].angular.z = std::numeric_limits<double>::quiet_NaN();
+        }
+        reference_callback(current_ref);
+      }
+      else
+      {
+        RCLCPP_WARN(
+          get_node()->get_logger(), "Name '%s' is not command interface. Ignoring this entry.",
+          request->names[i].c_str());
+        response->ok = false;
+      }
+    }
+  };
+
+  reset_axes_service_ = get_node()->create_service<ControllerModeSrvType>(
+    "~/reset_axes", reset_axes_service_callback, services_qos);
 
   return CallbackReturn::SUCCESS;
 }
@@ -246,7 +315,7 @@ void CartesianTrajectoryGenerator::reference_callback(
     params_.kinematics.cartesian_axes.size(), std::numeric_limits<double>::quiet_NaN());
   new_traj_msg->points[0].time_from_start = rclcpp::Duration::from_seconds(0.01);
 
-  // check all axes for "type" of messages coming in. If there are velocity values in a filed then
+  // check all axes for "type" of messages coming in. If there are velocity values in a field then
   // we switch away from position mode and set position to NaN
   auto assign_value_depending_on_input = [&](
                                            const double pos_from_msg, const double vel_from_msg,
@@ -310,7 +379,7 @@ void CartesianTrajectoryGenerator::reference_callback(
 controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
   const rclcpp_lifecycle::State & previous_state)
 {
-  // call the base class on_activate
+  // call the base class on_activate()
   auto ret = joint_trajectory_controller::JointTrajectoryController::on_activate(previous_state);
   if (ret != CallbackReturn::SUCCESS)
   {
