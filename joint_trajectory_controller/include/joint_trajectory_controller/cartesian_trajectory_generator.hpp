@@ -80,17 +80,22 @@ protected:
   // ruckig_state_/ruckig_input_state_, which are real-joint-space elsewhere in the base class —
   // reusing them here would be a confusing naming collision even though it'd technically compile).
 
-  // FLAG: cheeck for any cartesian smoothing logic from the JTC later
+  // FLAG: check for any cartesian smoothing logic from the JTC later
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_state_current_;
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_target_;
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_splines_state_;
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_ruckig_state_;
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_ruckig_input_state_;
 
-  // NOTE(rebase): dedicated real-joint-space state, separate from the inherited state_current_/
-  // state_desired_, purely for naming clarity between Cartesian- and joint-space quantities
+  // Separate joint state variables from the inherited ones. Renamed with joint_ prefix for improved
+  // readability
   trajectory_msgs::msg::JointTrajectoryPoint joint_state_current_;
   trajectory_msgs::msg::JointTrajectoryPoint joint_state_desired_;
+
+  // Override the service callback as current_trajectory_ is not modified in this controller
+  void query_state_service(
+    const std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Request> request,
+    std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Response> response) override;
 
 private:
   void reference_callback(const std::shared_ptr<ControllerReferenceMsg> msg);

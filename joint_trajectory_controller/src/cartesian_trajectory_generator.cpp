@@ -181,7 +181,7 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
         get_node()->get_logger(), "Limits for Cartesian axis %zu (%s) are: \n%s", i,
         axis_name.c_str(), cartesian_joint_limits_[i].to_string().c_str());
     }
-    // TheCartesian-delta safety check can only succeed if it has
+    // The Cartesian-delta safety check can only succeed if it has
     // a declared max_velocity. We add a warning at startup for any axis missing one
     if (!cartesian_joint_limits_[i].has_velocity_limits)
     {
@@ -205,10 +205,7 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
   cartesian_state_current_.positions.resize(params_.kinematics.cartesian_axes.size());
   cartesian_state_current_.velocities.resize(params_.kinematics.cartesian_axes.size());
 
-  // this message will be lock-free. Seeded here so the buffer is never left holding a
-  // default-constructed shared_ptr before the first activation; on_activate() re-seeds it again
-  // on every activation (see on_activate() below) so a deactivate->reactivate cycle doesn't leave
-  // a stale buffered message from before deactivation.
+  // this message will be lock-free
   new_cartesian_trajectory_msg_.writeFromNonRT(
     std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
 
@@ -314,6 +311,17 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
     "~/reset_axes", reset_axes_service_callback, services_qos);
 
   return CallbackReturn::SUCCESS;
+}
+
+void CartesianTrajectoryGenerator::query_state_service(
+  const std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Request> /*request*/,
+  std::shared_ptr<control_msgs::srv::QueryTrajectoryState::Response> response)
+{
+  response->success = false;
+  response->message =
+    "query_state is not supported by CartesianTrajectoryGenerator -- there is no discrete "
+    "joint trajectory to query; this controller streams Cartesian references converted to "
+    "joint commands every cycle via differential IK.";
 }
 
 void CartesianTrajectoryGenerator::reference_callback(
