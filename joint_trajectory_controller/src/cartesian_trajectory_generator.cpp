@@ -307,84 +307,10 @@ void CartesianTrajectoryGenerator::reference_callback(
   new_cartesian_trajectory_msg_.writeFromNonRT(new_traj_msg);
 }
 
-// NOTE(rebase): commented out (not deleted) -- params_.joints is now the real robot joint list, so
-// everything this old override did by hand (interface ordering, current_trajectory_ setup,
-// hold-position bootstrap) is now handled correctly for real joints by the inherited on_activate(),
-// called first in the real on_activate() override below. That override still exists -- it's not
-// dead -- but only to additionally (re)seed current_cartesian_trajectory_/
-// new_cartesian_trajectory_msg_, which the inherited version knows nothing about. Kept here for
-// historical reference against the old design rather than deleted outright.
-// controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
-//   const rclcpp_lifecycle::State &)
-// {
-//   // order all joints in the storage
-//   // NOTE(rebase): command_interface_types_ was superseded by params_.command_interfaces when
-//   // jazzy migrated parameter declarations to the generate_parameter_library params_ struct.
-//   for (const auto & interface : params_.command_interfaces)
-//   {
-//     auto it =
-//       std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), interface);
-//     auto index = std::distance(allowed_interface_types_.begin(), it);
-//     if (!controller_interface::get_ordered_interfaces(
-//           command_interfaces_, command_joint_names_, interface, joint_command_interface_[index]))
-//     {
-//       RCLCPP_ERROR(
-//         get_node()->get_logger(), "Expected %zu '%s' command interfaces, got %zu.", dof_,
-//         interface.c_str(), joint_command_interface_[index].size());
-//       return controller_interface::CallbackReturn::ERROR;
-//     }
-//   }
-//   // NOTE(rebase): no state-interface ordering here (this was already commented out in the
-//   // original commit) -- state_interface_configuration() returns NONE for this controller;
-//   // Cartesian state comes from the tf2/Odometry feedback subscriber instead, via
-//   // read_state_from_state_interfaces() below.
-//
-//   // NOTE(rebase): dropped the original "Store 'home' pose" block (traj_msg_home_ptr_,
-//   // traj_home_point_ptr_) -- jazzy removed the whole go-home concept independently of this
-//   // branch (see commits 1-14 of this rebase); nothing in the current update()/on_deactivate()
-//   // pipeline ever triggers a return-to-home anymore, so it was dead weight even before the
-//   // rename below. Replaced traj_external_point_ptr_/traj_point_active_ptr_/
-//   // traj_msg_external_point_ptr_ with jazzy's collapsed current_trajectory_/new_trajectory_msg_
-//   // (mirrors JointTrajectoryController::on_activate() exactly). Also dropped
-//   // last_state_publish_time_, which is unused dead vestigial state (see commit 14 of this
-//   // rebase for the same fix in the base class).
-//   current_trajectory_ = std::make_shared<joint_trajectory_controller::Trajectory>();
-//   new_trajectory_msg_.writeFromNonRT(std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
-//
-//   subscriber_is_active_ = true;
-//
-//   // Initialize current state storage if hardware state has tracking offset
-//   read_state_from_state_interfaces(state_current_);
-//   read_state_from_state_interfaces(state_desired_);
-//   read_state_from_state_interfaces(last_commanded_state_);
-//   // Handle restart of controller by reading from commands if
-//   // those are not nan
-//   trajectory_msgs::msg::JointTrajectoryPoint state;
-//   resize_joint_trajectory_point(state, dof_);
-//   if (read_state_from_command_interfaces(state))
-//   {
-//     state_current_ = state;
-//     state_desired_ = state;
-//     last_commanded_state_ = state;
-//   }
-//
-//   // NOTE(rebase): added to match JointTrajectoryController::on_activate()'s current behavior.
-//   // Without this, current_trajectory_ has no trajectory message and has_active_trajectory()
-//   // stays false until the first ~/reference message arrives, so update() writes nothing to the
-//   // command interfaces in the meantime. For position command interfaces that's harmless (the
-//   // hardware just holds its last position), but for velocity/effort command interfaces it would
-//   // leave them uncommanded (driver-dependent fallback, often but not guaranteed to be zero) from
-//   // activation until the first Cartesian reference. Holding at the current position immediately
-//   // is the safer default and is what the rest of the codebase now assumes.
-//   add_new_trajectory_msg(set_hold_position());
-//   rt_is_holding_ = true;
-//
-//   return CallbackReturn::SUCCESS;
-// }
-
 controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_activate(
   const rclcpp_lifecycle::State & previous_state)
 {
+  // call the base class on_activate
   auto ret = joint_trajectory_controller::JointTrajectoryController::on_activate(previous_state);
   if (ret != CallbackReturn::SUCCESS)
   {
