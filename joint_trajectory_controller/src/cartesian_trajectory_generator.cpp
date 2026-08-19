@@ -180,6 +180,17 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
         get_node()->get_logger(), "Limits for Cartesian axis %zu (%s) are: \n%s", i,
         axis_name.c_str(), cartesian_joint_limits_[i].to_string().c_str());
     }
+    // TheCartesian-delta safety check can only succeed if it has
+    // a declared max_velocity. We add a warning at startup for any axis missing one
+    if (!cartesian_joint_limits_[i].has_velocity_limits)
+    {
+      RCLCPP_WARN(
+        get_node()->get_logger(),
+        "Cartesian axis '%s' has no declared velocity limit. The "
+        "Cartesian-delta safety check in update() will not be able to catch an oversized command "
+        "for this axis.",
+        axis_name.c_str(), axis_name.c_str());
+    }
   }
 
   // Instantiate the cartesian trajectory object
@@ -492,6 +503,26 @@ controller_interface::return_type CartesianTrajectoryGenerator::update(
     for (size_t i = 0; i < 6; ++i)
     {
       delta_x[i] = cartesian_target_.positions[i] - cartesian_state_current_.positions[i];
+    }
+
+    // Safety check: if the raw Cartesian step itself is unreasonable before converting to joint
+    // We hold the same position in that case
+    for (size_t i = 0; i < 6; ++i)
+    {
+      if (!cartesian_joint_limits_[i].has_velocity_limits)
+      {
+        continue;
+      }
+      const double max_delta = cartesian_joint_limits_[i].max_velocity * period.seconds();
+      if (std::abs(delta_x[i]) > max_delta)
+      {
+        RCLCPP_WARN_THROTTLE(
+          get_node()->get_logger(), *(get_node()->get_clock()), 1000,
+          "Cartesian delta for axis '%s' (%f) exceeds the max step allowed this cycle (%f). "
+          "Holding position.",
+          params_.kinematics.cartesian_axes[i].c_str(), delta_x[i], max_delta);
+        return controller_interface::return_type::OK;
+      }
     }
 
     // Convert to a joint-space delta via the kinematics plugin
