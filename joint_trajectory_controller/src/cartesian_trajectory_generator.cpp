@@ -16,6 +16,7 @@
 
 #include "tf2/transform_datatypes.h"
 
+#include "angles/angles.h"
 #include "controller_interface/helpers.hpp"
 #include "joint_limits/joint_limits_rosparam.hpp"
 #include "joint_trajectory_controller/trajectory.hpp"
@@ -497,12 +498,18 @@ controller_interface::return_type CartesianTrajectoryGenerator::update(
       cartesian_joint_limits_, cartesian_splines_state_, cartesian_ruckig_state_,
       cartesian_ruckig_input_state_);
 
-    // Cartesian delta between the smoothed target and the actual current Cartesian pose.
-    // FLAG: no wraparound handling on the rotation axes (rx/ry/rz). This is a pre-existing gap.
+    // Cartesian delta between the smoothed target and the actual current Cartesian pose
     std::vector<double> delta_x(6);
-    for (size_t i = 0; i < 6; ++i)
+    for (size_t i = 0; i < 3; ++i)
     {
+      // Simple substraction for translations
       delta_x[i] = cartesian_target_.positions[i] - cartesian_state_current_.positions[i];
+    }
+    for (size_t i = 3; i < 6; ++i)
+    {
+      // compute shortest path between angles for rotations
+      delta_x[i] = angles::shortest_angular_distance(
+        cartesian_state_current_.positions[i], cartesian_target_.positions[i]);
     }
 
     // Safety check: if the raw Cartesian step itself is unreasonable before converting to joint

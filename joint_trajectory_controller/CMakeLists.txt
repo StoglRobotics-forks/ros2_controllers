@@ -88,6 +88,7 @@ target_link_libraries(cartesian_trajectory_generator PUBLIC
                       joint_trajectory_controller
                       tf2::tf2
                       tf2_geometry_msgs::tf2_geometry_msgs
+                      angles::angles
                       ${nav_msgs_TARGETS}
                       ${control_msgs_TARGETS})
 
