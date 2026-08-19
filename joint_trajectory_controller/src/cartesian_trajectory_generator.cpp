@@ -190,7 +190,7 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
         "Cartesian axis '%s' has no declared velocity limit. The "
         "Cartesian-delta safety check in update() will not be able to catch an oversized command "
         "for this axis.",
-        axis_name.c_str(), axis_name.c_str());
+        axis_name.c_str());
     }
   }
 
@@ -235,12 +235,6 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
   reset_controller_feedback_msg(feedback_msg);
   feedback_.writeFromNonRT(feedback_msg);
 
-  // NOTE(rebase): the original `~/reset_axes` service (control_msgs::srv::ResetAxis) lived in a
-  // private control_msgs fork, never upstreamed, so it didn't exist in jazzy's control_msgs.
-  // Restored by adding ResetAxis to this org's own control_msgs fork instead (already a dependency
-  // of this package) -- same request/response shape as the original: a list of axis names,
-  // switched to position-hold mode and immediately frozen at their current feedback pose.
-  //
   // NOTE(rebase): the original's second service, `~/set_joint_limits`
   // (control_msgs::srv::SetDOFLimits, retuning per-axis Ruckig limits live without a reconfigure),
   // stays dropped -- also a private-fork-only message type, and not required for the core feature.
@@ -484,18 +478,21 @@ controller_interface::return_type CartesianTrajectoryGenerator::update(
   // Guards against empty trajectory messages
   if (has_active_cartesian_trajectory())
   {
-    // if sampling the first time, set the point before you sample
+    // if sampling the first time, set the point before you sample. Also (re)sync the paused
+    // clock to real time
     if (!current_cartesian_trajectory_->is_sampled_already())
     {
+      cartesian_trajectory_time_ = time;
       current_cartesian_trajectory_->set_point_before_trajectory_msg(
-        time, cartesian_state_current_, {});
+        cartesian_trajectory_time_, cartesian_state_current_, {});
     }
 
-    // Sample expected state from the trajectory
+    // Sample expected state from the trajectory. Uses cartesian_trajectory_time_, not the real
+    // time, so that a held cycle doesn't advance the sampled target
     joint_trajectory_controller::TrajectoryPointConstIter start_it, end_it;
     current_cartesian_trajectory_->sample(
-      time, interpolation_method_, cartesian_target_, start_it, end_it, period,
-      cartesian_joint_limits_, cartesian_splines_state_, cartesian_ruckig_state_,
+      cartesian_trajectory_time_, interpolation_method_, cartesian_target_, start_it, end_it,
+      period, cartesian_joint_limits_, cartesian_splines_state_, cartesian_ruckig_state_,
       cartesian_ruckig_input_state_);
 
     // Cartesian delta between the smoothed target and the actual current Cartesian pose
@@ -564,6 +561,10 @@ controller_interface::return_type CartesianTrajectoryGenerator::update(
       }
     }
 
+    // Both safety checks passed so the joint command will be written this cycle,
+    // so advance the paused clock by one period now
+    cartesian_trajectory_time_ += period;
+
     // Target real joint positions = current real joint positions + the IK-converted delta.
     std::vector<double> target_real_joint_positions(dof_);
     for (size_t i = 0; i < dof_; ++i)
@@ -571,7 +572,11 @@ controller_interface::return_type CartesianTrajectoryGenerator::update(
       target_real_joint_positions[i] = joint_state_current_.positions[i] + joint_delta[i];
     }
 
-    // Fill joint_state_desired_/state_error_ for accurate publish_state() reporting
+    // NOTE: joint_state_desired_.velocities (and therefore state_error_.velocities) is temporarily
+    // left unset here as it's only ever consumed by the state_publisher, nothing in the actual
+    // IK/safety-check/hardware-write pipeline above reads it. Will be added later when needed.
+
+    // Fill joint_state_desired_/state_error_ for accurate publish_state() reporting.
     joint_state_desired_.positions = target_real_joint_positions;
     for (size_t i = 0; i < dof_; ++i)
     {

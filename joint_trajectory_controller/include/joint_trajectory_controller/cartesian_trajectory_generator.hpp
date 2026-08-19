@@ -64,12 +64,6 @@ protected:
   rclcpp::Subscription<ControllerFeedbackMsg>::SharedPtr feedback_subscriber_ = nullptr;
   realtime_tools::RealtimeBuffer<std::shared_ptr<ControllerFeedbackMsg>> feedback_;
 
-  // NOTE(rebase): control_msgs::srv::ResetAxis didn't exist in jazzy's control_msgs (a custom
-  // message type from a private control_msgs fork, never upstreamed) -- restored here by adding it
-  // to this org's own control_msgs fork instead (already a dependency of this package). The
-  // `~/reset_axes` service, wired up in on_configure(), takes a list of axis names and switches
-  // each to position-hold mode, freezing it at its current feedback pose immediately (matches the
-  // original's behavior).
   std::unordered_map<std::string, realtime_tools::RealtimeBuffer<bool>> use_position_input_;
   rclcpp::Service<ControllerModeSrvType>::SharedPtr reset_axes_service_;
 
@@ -78,11 +72,15 @@ protected:
     new_cartesian_trajectory_msg_;
   std::vector<joint_limits::JointLimits> cartesian_joint_limits_;
 
+  //  Separate time variable for cartesian trajectory. Used to pause time on cycles where the robot
+  //  does not move. Advances by one period before writing to the hardware
+  rclcpp::Time cartesian_trajectory_time_;
+
   // Dedicated Cartesian-space debug/working points (NOT the inherited splines_state_/
   // ruckig_state_/ruckig_input_state_, which are real-joint-space elsewhere in the base class —
   // reusing them here would be a confusing naming collision even though it'd technically compile).
 
-  // FLAG: Remove the smoothing logic from the JTC later
+  // FLAG: cheeck for any cartesian smoothing logic from the JTC later
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_state_current_;
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_target_;
   trajectory_msgs::msg::JointTrajectoryPoint cartesian_splines_state_;
