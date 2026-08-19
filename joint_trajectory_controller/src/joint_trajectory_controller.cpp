@@ -913,43 +913,6 @@ controller_interface::CallbackReturn JointTrajectoryController::on_configure(
   // get degrees of freedom
   dof_ = params_.joints.size();
 
-  // Load the differential IK plugin
-  if (!params_.kinematics.plugin_name.empty())
-  {
-    try
-    {
-      // Make sure we destroy the interface first. Otherwise we might run into a segfault
-      if (kinematics_loader_)
-      {
-        kinematics_.reset();
-      }
-      kinematics_loader_ =
-        std::make_shared<pluginlib::ClassLoader<kinematics_interface::KinematicsInterface>>(
-          params_.kinematics.plugin_package, "kinematics_interface::KinematicsInterface");
-      kinematics_ = std::unique_ptr<kinematics_interface::KinematicsInterface>(
-        kinematics_loader_->createUnmanagedInstance(params_.kinematics.plugin_name));
-
-      if (!kinematics_->initialize(
-            get_robot_description(), get_node()->get_node_parameters_interface(), "kinematics"))
-      {
-        return CallbackReturn::FAILURE;
-      }
-    }
-    catch (pluginlib::PluginlibException & ex)
-    {
-      RCLCPP_ERROR(
-        logger, "Exception while loading the IK plugin '%s': '%s'",
-        params_.kinematics.plugin_name.c_str(), ex.what());
-      return CallbackReturn::FAILURE;
-    }
-  }
-  else
-  {
-    // Kinematics plugin is optional: only needed by features that require Cartesian->joint
-    // conversion (e.g. CartesianTrajectoryGenerator). A plain joint-space JTC has no use for it
-    RCLCPP_DEBUG(logger, "No kinematics plugin configured; IK-dependent features are unavailable.");
-  }
-
   // TODO(destogl): why is this here? Add comment or move
   if (!reset())
   {

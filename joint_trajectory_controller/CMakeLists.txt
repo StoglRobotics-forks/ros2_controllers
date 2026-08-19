@@ -66,7 +66,6 @@ target_link_libraries(joint_trajectory_controller PUBLIC
                       ruckig::ruckig
                       urdf::urdf
                       angles::angles
-                      kinematics_interface::kinematics_interface
                       ${trajectory_msgs_TARGETS}
                       ${control_msgs_TARGETS})
 
@@ -89,6 +88,7 @@ target_link_libraries(cartesian_trajectory_generator PUBLIC
                       tf2::tf2
                       tf2_geometry_msgs::tf2_geometry_msgs
                       angles::angles
+                      kinematics_interface::kinematics_interface
                       ${nav_msgs_TARGETS}
                       ${control_msgs_TARGETS})
 

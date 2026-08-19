@@ -123,6 +123,34 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
     return ret;
   }
 
+  // Load the differential IK plugin
+  try
+  {
+    // Make sure we destroy the interface first. Otherwise we might run into a segfault
+    if (kinematics_loader_)
+    {
+      kinematics_.reset();
+    }
+    kinematics_loader_ =
+      std::make_shared<pluginlib::ClassLoader<kinematics_interface::KinematicsInterface>>(
+        params_.kinematics.plugin_package, "kinematics_interface::KinematicsInterface");
+    kinematics_ = std::unique_ptr<kinematics_interface::KinematicsInterface>(
+      kinematics_loader_->createUnmanagedInstance(params_.kinematics.plugin_name));
+
+    if (!kinematics_->initialize(
+          get_robot_description(), get_node()->get_node_parameters_interface(), "kinematics"))
+    {
+      return CallbackReturn::FAILURE;
+    }
+  }
+  catch (pluginlib::PluginlibException & ex)
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(), "Exception while loading the IK plugin '%s': '%s'",
+      params_.kinematics.plugin_name.c_str(), ex.what());
+    return CallbackReturn::FAILURE;
+  }
+
   // This controller only supports writing position commands for now
   if (!has_position_command_interface_)
   {

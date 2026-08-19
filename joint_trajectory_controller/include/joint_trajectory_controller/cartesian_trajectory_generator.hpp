@@ -23,7 +23,9 @@
 #include <vector>
 
 #include "control_msgs/srv/reset_axis.hpp"
+#include "kinematics_interface/kinematics_interface.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "pluginlib/class_loader.hpp"
 #include "trajectory_msgs/msg/multi_dof_joint_trajectory_point.hpp"
 
 using namespace std::chrono_literals;  // NOLINT
@@ -31,11 +33,6 @@ using namespace std::chrono_literals;  // NOLINT
 namespace cartesian_trajectory_generator
 {
 
-// FLAG(review): kinematics_/kinematics_loader_ are declared on the base
-// JointTrajectoryController, not here, even though this generator is their only real consumer --
-// see the matching FLAG(review) note next to their declaration in joint_trajectory_controller.hpp.
-// Moving them onto this class instead would fully isolate the Cartesian/IK feature from the base
-// class; deferred for now.
 class CartesianTrajectoryGenerator : public joint_trajectory_controller::JointTrajectoryController
 {
 public:
@@ -66,6 +63,11 @@ protected:
 
   std::unordered_map<std::string, realtime_tools::RealtimeBuffer<bool>> use_position_input_;
   rclcpp::Service<ControllerModeSrvType>::SharedPtr reset_axes_service_;
+
+  // Kinematics interface plugin loader
+  std::shared_ptr<pluginlib::ClassLoader<kinematics_interface::KinematicsInterface>>
+    kinematics_loader_;
+  std::unique_ptr<kinematics_interface::KinematicsInterface> kinematics_;
 
   std::shared_ptr<joint_trajectory_controller::Trajectory> current_cartesian_trajectory_;
   realtime_tools::RealtimeBuffer<std::shared_ptr<trajectory_msgs::msg::JointTrajectory>>
