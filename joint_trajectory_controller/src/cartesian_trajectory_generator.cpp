@@ -132,6 +132,21 @@ controller_interface::CallbackReturn CartesianTrajectoryGenerator::on_configure(
     return CallbackReturn::FAILURE;
   }
 
+  // The IK-delta safety check inside update() can only succeed if that joint has a
+  // declared max_velocity. We add a warning at startup for any joint missing one
+  for (size_t i = 0; i < dof_; ++i)
+  {
+    if (!joint_limits_[i].has_velocity_limits)
+    {
+      RCLCPP_WARN(
+        get_node()->get_logger(),
+        "Joint '%s' has no declared velocity limit (joint_limits.%s.max_velocity). The "
+        "IK-delta safety check in update() will not be able to catch an "
+        "oversized command for this joint.",
+        params_.joints[i].c_str(), params_.joints[i].c_str());
+    }
+  }
+
   // Check if the cartesian axes parameter is correctly populated
   if (params_.kinematics.cartesian_axes.size() != 6)
   {
@@ -488,6 +503,27 @@ controller_interface::return_type CartesianTrajectoryGenerator::update(
         get_node()->get_logger(),
         "Failed to convert Cartesian reference to joint deltas via IK this cycle.");
       return controller_interface::return_type::OK;
+    }
+
+    // Safety check: differential IK is only accurate for small steps, a legitimate, small
+    // Cartesian delta can still map to a large joint delta near a kinematic singularity
+    // We hold position in that case
+    for (size_t i = 0; i < dof_; ++i)
+    {
+      if (!joint_limits_[i].has_velocity_limits)
+      {
+        continue;
+      }
+      const double max_delta = joint_limits_[i].max_velocity * period.seconds();
+      if (std::abs(joint_delta[i]) > max_delta)
+      {
+        RCLCPP_WARN_THROTTLE(
+          get_node()->get_logger(), *get_node()->get_clock(), 1000,
+          "IK-converted delta for joint '%s' (%f) exceeds the max step allowed this cycle (%f). "
+          "Holding position.",
+          params_.joints[i].c_str(), joint_delta[i], max_delta);
+        return controller_interface::return_type::OK;
+      }
     }
 
     // Target real joint positions = current real joint positions + the IK-converted delta.
