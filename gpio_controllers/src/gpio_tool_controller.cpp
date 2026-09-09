@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "controller_interface/helpers.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "rclcpp/version.h"
 
 namespace
@@ -918,6 +919,16 @@ GpioToolController::EngagingSrvType::Response GpioToolController::process_engagi
   const ToolAction & requested_action, const std::string & requested_action_name)
 {
   EngagingSrvType::Response response;
+
+  if (get_lifecycle_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
+  {
+    response.success = false;
+    response.message =
+      "Cannot process '" + requested_action_name + "' request. Controller is not active.";
+    RCLCPP_ERROR(get_node()->get_logger(), "%s", response.message.c_str());
+    return response;
+  }
+
   if (current_tool_action_.load() == ToolAction::RECONFIGURING)
   {
     response.success = false;
@@ -978,7 +989,12 @@ GpioToolController::EngagingSrvType::Response GpioToolController::process_reconf
 {
   EngagingSrvType::Response response;
   response.success = true;
-  if (config_name.empty())
+  if (get_lifecycle_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
+  {
+    response.success = false;
+    response.message = "Cannot process reconfigure request. Controller is not active.";
+  }
+  if (response.success && config_name.empty())
   {
     response.success = false;
     response.message = "Configuration name cannot be empty";

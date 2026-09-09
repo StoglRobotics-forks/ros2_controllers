@@ -46,6 +46,7 @@ class TestableGpioToolController : public gpio_tool_controller::GpioToolControll
 {
   FRIEND_TEST(GpioToolControllerTest, AllParamsSetSuccess);
   FRIEND_TEST(GpioToolControllerTest, AllParamNotSetFailure);
+  FRIEND_TEST(GpioToolControllerTest, GoalRejectedWhileInactive);
 
 public:
   controller_interface::CallbackReturn on_configure(
