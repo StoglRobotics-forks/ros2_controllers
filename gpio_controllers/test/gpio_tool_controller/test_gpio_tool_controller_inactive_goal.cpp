@@ -39,7 +39,6 @@ TEST_F(GpioToolControllerTest, GoalRejectedWhileInactive)
 
   // The request is rejected because the controller is not active - no transition starts.
   EXPECT_FALSE(response.success);
-  EXPECT_EQ(controller_->current_tool_action_.load(), gpio_tool_controller::ToolAction::IDLE);
-  EXPECT_EQ(
-    controller_->current_tool_transition_.load(), control_msgs::msg::GPIOToolTransition::IDLE);
+  EXPECT_EQ(controller_->tool_action(), gpio_tool_controller::ToolAction::IDLE);
+  EXPECT_EQ(controller_->tool_transition(), control_msgs::msg::GPIOToolTransition::IDLE);
 }
