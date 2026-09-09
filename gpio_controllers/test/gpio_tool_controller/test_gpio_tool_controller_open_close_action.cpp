@@ -22,6 +22,7 @@
 //   - executing opposite action → accept and switch (success=true)
 //   - IDLE + already in target state → accept with success=true, no action started
 //   - IDLE + not in target state → accept and start action (success=true)
+//   - Controller not active (never activated) → reject with success=false
 
 #include <memory>
 #include <string>
@@ -223,4 +224,29 @@ TEST_F(GpioToolControllerRequestTest, ProcessEngagingRequestDuringCancelingAccep
   // CANCELING is overridden by the new ENGAGING action
   EXPECT_EQ(controller_->get_current_action(), ToolAction::ENGAGING);
   EXPECT_EQ(controller_->get_current_transition(), GPIOToolTransition::SET_BEFORE_COMMAND);
+}
+
+// ---------------------------------------------------------------------------
+// Controller configured but never activated → request is rejected
+//
+// update() only runs while the controller is active. Without this check, a
+// request accepted here would start a transition that can never progress,
+// wedging the tool in EXECUTING forever.
+// ---------------------------------------------------------------------------
+TEST_F(GpioToolControllerRequestTest, RejectsRequestWhenControllerNotActive)
+{
+  SetUpController(
+    "test_gpio_tool_controller",
+    {rclcpp::Parameter("possible_engaged_states", possible_engaged_states)});
+  setup_parameters();
+  ASSERT_EQ(
+    controller_->on_configure(rclcpp_lifecycle::State()),
+    controller_interface::CallbackReturn::SUCCESS);
+  // on_activate() is intentionally not called.
+
+  auto resp = controller_->call_process_tool_action_request(ToolAction::ENGAGING, "engaged");
+
+  EXPECT_FALSE(resp.success);
+  EXPECT_EQ(controller_->get_current_action(), ToolAction::IDLE);
+  EXPECT_EQ(controller_->get_current_transition(), GPIOToolTransition::IDLE);
 }

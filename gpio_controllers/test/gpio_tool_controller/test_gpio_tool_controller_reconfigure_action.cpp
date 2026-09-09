@@ -22,6 +22,7 @@
 //   - Tool not IDLE (busy with another action) → reject
 //   - Tool not in disengaged state ("open") → reject
 //   - IDLE + disengaged + valid name → accept, start RECONFIGURING
+//   - Controller not active (never activated) → reject
 
 #include <memory>
 #include <string>
@@ -165,4 +166,32 @@ TEST_F(GpioToolControllerReconfigureTest, RejectsReconfigureWhenAlreadyReconfigu
   EXPECT_FALSE(resp.success);
   // Action must not change
   EXPECT_EQ(controller_->get_current_action(), ToolAction::RECONFIGURING);
+}
+
+// ---------------------------------------------------------------------------
+// Controller configured but never activated → reconfigure request is rejected
+//
+// update() only runs while the controller is active. Without this check, a
+// request accepted here would start a transition that can never progress,
+// wedging the tool in EXECUTING forever.
+// ---------------------------------------------------------------------------
+TEST_F(GpioToolControllerReconfigureTest, RejectsReconfigureWhenControllerNotActive)
+{
+  SetUpController(
+    "test_gpio_tool_controller",
+    {rclcpp::Parameter("possible_engaged_states", possible_engaged_states),
+     rclcpp::Parameter(
+       "configurations", std::vector<std::string>{"narrow_objects", "wide_objects"}),
+     rclcpp::Parameter(
+       "configuration_joints", std::vector<std::string>{"gripper_distance_joint"})});
+  setup_parameters_with_config();
+  ASSERT_EQ(
+    controller_->on_configure(rclcpp_lifecycle::State()),
+    controller_interface::CallbackReturn::SUCCESS);
+  // on_activate() is intentionally not called.
+
+  auto resp = controller_->call_process_reconfigure_request("narrow_objects");
+
+  EXPECT_FALSE(resp.success);
+  EXPECT_EQ(controller_->get_current_action(), ToolAction::IDLE);
 }

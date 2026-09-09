@@ -183,6 +183,10 @@ protected:
   // Store current action tool is executing
   std::atomic<ToolAction> current_tool_action_{ToolAction::IDLE};
   std::atomic<uint8_t> current_tool_transition_{GPIOToolTransition::IDLE};
+  // Set in on_activate()/cleared in on_deactivate() - used to reject engage/reconfigure
+  // requests while the controller is not active (update() only runs while active, so a
+  // request accepted outside that window could never progress).
+  std::atomic<bool> is_active_{false};
   std::atomic<bool> reset_halted_{false};
   std::atomic<bool> transition_time_updated_{false};
   realtime_tools::RealtimeThreadSafeBox<std::string> target_configuration_;

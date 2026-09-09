@@ -344,12 +344,14 @@ controller_interface::CallbackReturn GpioToolController::on_activate(
   //   correct, than try to activate the controller again."); return
   //   controller_interface::CallbackReturn::FAILURE;
   // }
+  is_active_.store(true);
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
 controller_interface::CallbackReturn GpioToolController::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  is_active_.store(false);
   joint_states_values_.assign(
     params_.engaged_joints.size() + params_.configuration_joints.size(),
     std::numeric_limits<double>::quiet_NaN());
@@ -923,6 +925,16 @@ GpioToolController::EngagingSrvType::Response GpioToolController::process_tool_a
   const ToolAction & requested_action, const std::string & requested_action_name)
 {
   EngagingSrvType::Response response;
+
+  if (!is_active_.load())
+  {
+    response.success = false;
+    response.message =
+      "Cannot process '" + requested_action_name + "' request. Controller is not active.";
+    RCLCPP_ERROR(get_node()->get_logger(), "%s", response.message.c_str());
+    return response;
+  }
+
   if (current_tool_action_.load() == ToolAction::RECONFIGURING)
   {
     response.success = false;
@@ -983,7 +995,12 @@ GpioToolController::EngagingSrvType::Response GpioToolController::process_reconf
 {
   EngagingSrvType::Response response;
   response.success = true;
-  if (config_name.empty())
+  if (!is_active_.load())
+  {
+    response.success = false;
+    response.message = "Cannot process reconfigure request. Controller is not active.";
+  }
+  if (response.success && config_name.empty())
   {
     response.success = false;
     response.message = "Configuration name cannot be empty";
