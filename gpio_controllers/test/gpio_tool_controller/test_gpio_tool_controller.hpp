@@ -37,6 +37,7 @@
 #include "control_msgs/msg/gpio_tool_transition.hpp"
 #include "controller_interface/controller_interface_params.hpp"
 #include "gpio_controllers/gpio_tool_controller.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 
 namespace
 {
@@ -160,6 +161,34 @@ public:
 
     ASSERT_EQ(controller_->init(params), controller_interface::return_type::OK);
     RCLCPP_INFO(rclcpp::get_logger("GpioToolControllerTest"), "initialized successfully");
+  }
+
+  // Drive the real LifecycleNode state machine - matches how the controller_manager
+  // configures/activates/deactivates a controller (controller->configure(),
+  // controller->get_node()->activate()/deactivate()). Calling the on_configure()/
+  // on_activate()/on_deactivate() overrides directly instead would skip the state
+  // machine entirely, so get_lifecycle_state() would never actually report the
+  // resulting state - which is what the controller's own preconditions check.
+  controller_interface::CallbackReturn ConfigureController()
+  {
+    const auto & state = controller_->configure();
+    return state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE
+             ? controller_interface::CallbackReturn::SUCCESS
+             : controller_interface::CallbackReturn::FAILURE;
+  }
+
+  controller_interface::CallbackReturn ActivateController()
+  {
+    auto cb_return = controller_interface::CallbackReturn::ERROR;
+    controller_->get_node()->activate(cb_return);
+    return cb_return;
+  }
+
+  controller_interface::CallbackReturn DeactivateController()
+  {
+    auto cb_return = controller_interface::CallbackReturn::ERROR;
+    controller_->get_node()->deactivate(cb_return);
+    return cb_return;
   }
 
   void setup_parameters()

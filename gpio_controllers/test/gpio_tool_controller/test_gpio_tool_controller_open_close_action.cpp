@@ -42,14 +42,10 @@ void prepare_for_request(
   fx.SetUpController(
     "test_gpio_tool_controller", {rclcpp::Parameter("possible_engaged_states", possible_states)});
   fx.setup_parameters();
-  ASSERT_EQ(
-    fx.controller_->on_configure(rclcpp_lifecycle::State()),
-    controller_interface::CallbackReturn::SUCCESS);
+  ASSERT_EQ(fx.ConfigureController(), controller_interface::CallbackReturn::SUCCESS);
   fx.SetupInterfaces();
   fx.SetInitialHardwareState(initial_hw_state);
-  ASSERT_EQ(
-    fx.controller_->on_activate(rclcpp_lifecycle::State()),
-    controller_interface::CallbackReturn::SUCCESS);
+  ASSERT_EQ(fx.ActivateController(), controller_interface::CallbackReturn::SUCCESS);
 }
 }  // namespace
 
