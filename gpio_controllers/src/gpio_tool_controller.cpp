@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "controller_interface/helpers.hpp"
+#include "lifecycle_msgs/msg/state.hpp"
 #include "rclcpp/version.h"
 
 namespace
@@ -344,14 +345,12 @@ controller_interface::CallbackReturn GpioToolController::on_activate(
   //   correct, than try to activate the controller again."); return
   //   controller_interface::CallbackReturn::FAILURE;
   // }
-  is_active_.store(true);
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
 controller_interface::CallbackReturn GpioToolController::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  is_active_.store(false);
   joint_states_values_.resize(
     params_.engaged_joints.size() + params_.configuration_joints.size(),
     std::numeric_limits<double>::quiet_NaN());
@@ -921,7 +920,7 @@ GpioToolController::EngagingSrvType::Response GpioToolController::process_engagi
 {
   EngagingSrvType::Response response;
 
-  if (!is_active_.load())
+  if (get_lifecycle_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
   {
     response.success = false;
     response.message =
@@ -990,7 +989,7 @@ GpioToolController::EngagingSrvType::Response GpioToolController::process_reconf
 {
   EngagingSrvType::Response response;
   response.success = true;
-  if (!is_active_.load())
+  if (get_lifecycle_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
   {
     response.success = false;
     response.message = "Cannot process reconfigure request. Controller is not active.";
